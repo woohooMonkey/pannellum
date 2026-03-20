@@ -1,0 +1,40 @@
+-- 创建数据库
+CREATE DATABASE IF NOT EXISTS panorama_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+USE panorama_db;
+
+-- 管理员表
+CREATE TABLE IF NOT EXISTS admins (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL COMMENT 'bcrypt加密密码',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='管理员表';
+
+-- 全景图表
+CREATE TABLE IF NOT EXISTS panoramas (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  type ENUM('main', 'scene') NOT NULL DEFAULT 'scene' COMMENT '类型：main=主图, scene=场景图',
+  name VARCHAR(255) NOT NULL COMMENT '全景图名称',
+  description TEXT COMMENT '描述',
+  file_path VARCHAR(500) NOT NULL COMMENT '文件存储相对路径',
+  upload_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='全景图表';
+
+-- 标记点表
+CREATE TABLE IF NOT EXISTS markers (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  panorama_id INT NOT NULL COMMENT '关联全景图ID',
+  type ENUM('normal', 'navigation') NOT NULL DEFAULT 'normal' COMMENT '类型：normal=普通标记, navigation=导航点',
+  title VARCHAR(255) NOT NULL COMMENT '标记标题',
+  description TEXT COMMENT '标记描述',
+  target_panorama_id INT NULL COMMENT '导航目标全景图ID（仅导航点使用）',
+  pitch DECIMAL(10, 6) NOT NULL COMMENT 'Pannellum俯仰角',
+  yaw DECIMAL(10, 6) NOT NULL COMMENT 'Pannellum偏航角',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (panorama_id) REFERENCES panoramas(id) ON DELETE CASCADE,
+  FOREIGN KEY (target_panorama_id) REFERENCES panoramas(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='标记点表';

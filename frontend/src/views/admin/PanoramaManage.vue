@@ -1,0 +1,345 @@
+<template>
+  <div class="panorama-manage">
+    <el-card>
+      <div slot="header" class="card-header">
+        <span>全景图列表</span>
+        <el-button type="primary" size="small" icon="el-icon-plus" @click="showUploadDialog">
+          上传全景图
+        </el-button>
+      </div>
+
+      <!-- 表格 -->
+      <el-table :data="panoramas" v-loading="loading" border stripe>
+        <el-table-column prop="id" label="ID" width="80"></el-table-column>
+        <el-table-column label="类型" width="100">
+          <template slot-scope="scope">
+            <el-tag :type="scope.row.type === 'main' ? 'danger' : 'info'" size="small">
+              {{ scope.row.type === 'main' ? '主图' : '场景图' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="name" label="名称" min-width="150"></el-table-column>
+        <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip></el-table-column>
+        <el-table-column label="预览" width="100">
+          <template slot-scope="scope">
+            <el-image
+              :src="scope.row.file_path"
+              :preview-src-list="[scope.row.file_path]"
+              fit="cover"
+              style="width: 60px; height: 30px;"
+            ></el-image>
+          </template>
+        </el-table-column>
+        <el-table-column prop="marker_count" label="标记点数" width="100"></el-table-column>
+        <el-table-column prop="upload_time" label="上传时间" width="180">
+          <template slot-scope="scope">
+            {{ formatDate(scope.row.upload_time) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template slot-scope="scope">
+            <el-button type="text" size="small" @click="showEditDialog(scope.row)">编辑</el-button>
+            <el-button
+              type="text"
+              size="small"
+              @click="setAsMain(scope.row)"
+              :disabled="scope.row.type === 'main'"
+            >
+              设为主图
+            </el-button>
+            <el-button type="text" size="small" @click="handleDelete(scope.row)" style="color: #F56C6C;">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 上传对话框 -->
+    <el-dialog title="上传全景图" :visible.sync="uploadDialogVisible" width="500px" :close-on-click-modal="false">
+      <el-form ref="uploadForm" :model="uploadForm" :rules="uploadRules" label-width="80px">
+        <el-form-item label="文件" prop="file">
+          <el-upload
+            ref="upload"
+            action="#"
+            :auto-upload="false"
+            :limit="1"
+            accept="image/jpeg,image/jpg,image/png"
+            :on-change="handleFileChange"
+            :on-remove="handleFileRemove"
+            :file-list="fileList"
+          >
+            <el-button size="small" type="primary">选择文件</el-button>
+            <div slot="tip" class="el-upload__tip">只支持 JPG/PNG 格式，最大 50MB</div>
+          </el-upload>
+        </el-form-item>
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="uploadForm.name" placeholder="请输入全景图名称"></el-input>
+        </el-form-item>
+        <el-form-item label="类型" prop="type">
+          <el-radio-group v-model="uploadForm.type">
+            <el-radio label="scene">场景图</el-radio>
+            <el-radio label="main">主图</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input type="textarea" v-model="uploadForm.description" :rows="3" placeholder="请输入描述"></el-input>
+        </el-form-item>
+      </el-form>
+      <span slot="footer">
+        <el-button @click="uploadDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="uploading" @click="handleUpload">确定上传</el-button>
+      </span>
+    </el-dialog>
+
+    <!-- 编辑对话框 -->
+    <el-dialog title="编辑全景图" :visible.sync="editDialogVisible" width="500px" :close-on-click-modal="false">
+      <el-form ref="editForm" :model="editForm" :rules="editRules" label-width="80px">
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="editForm.name" placeholder="请输入全景图名称"></el-input>
+        </el-form-item>
+        <el-form-item label="类型" prop="type">
+          <el-radio-group v-model="editForm.type">
+            <el-radio label="scene">场景图</el-radio>
+            <el-radio label="main">主图</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input type="textarea" v-model="editForm.description" :rows="3" placeholder="请输入描述"></el-input>
+        </el-form-item>
+      </el-form>
+      <span slot="footer">
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="handleEdit">保存</el-button>
+      </span>
+    </el-dialog>
+  </div>
+</template>
+
+<script>
+import { panoramaApi } from '@/api';
+
+export default {
+  name: 'PanoramaManage',
+  data() {
+    return {
+      panoramas: [],
+      loading: false,
+
+      // 上传相关
+      uploadDialogVisible: false,
+      uploading: false,
+      fileList: [],
+      uploadForm: {
+        name: '',
+        type: 'scene',
+        description: '',
+        file: null
+      },
+      uploadRules: {
+        name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
+        type: [{ required: true, message: '请选择类型', trigger: 'change' }]
+      },
+
+      // 编辑相关
+      editDialogVisible: false,
+      saving: false,
+      editForm: {
+        id: null,
+        name: '',
+        type: '',
+        description: ''
+      },
+      editRules: {
+        name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
+        type: [{ required: true, message: '请选择类型', trigger: 'change' }]
+      }
+    };
+  },
+  mounted() {
+    this.loadPanoramas();
+  },
+  methods: {
+    /**
+     * 加载全景图列表
+     */
+    async loadPanoramas() {
+      this.loading = true;
+      try {
+        const res = await panoramaApi.getList();
+        if (res.success) {
+          this.panoramas = res.data;
+        }
+      } catch (error) {
+        this.$message.error('加载全景图列表失败');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /**
+     * 显示上传对话框
+     */
+    showUploadDialog() {
+      this.fileList = [];
+      this.uploadForm = {
+        name: '',
+        type: 'scene',
+        description: '',
+        file: null
+      };
+      this.uploadDialogVisible = true;
+    },
+
+    /**
+     * 文件选择变化
+     */
+    handleFileChange(file, fileList) {
+      this.uploadForm.file = file.raw;
+      // 自动填充名称
+      if (!this.uploadForm.name) {
+        const fileName = file.name.replace(/\.[^/.]+$/, '');
+        this.uploadForm.name = fileName;
+      }
+    },
+
+    /**
+     * 文件移除
+     */
+    handleFileRemove() {
+      this.uploadForm.file = null;
+    },
+
+    /**
+     * 上传全景图
+     */
+    async handleUpload() {
+      this.$refs.uploadForm.validate(async (valid) => {
+        if (!valid) return;
+
+        if (!this.uploadForm.file) {
+          this.$message.warning('请选择文件');
+          return;
+        }
+
+        this.uploading = true;
+        try {
+          const formData = new FormData();
+          formData.append('file', this.uploadForm.file);
+          formData.append('name', this.uploadForm.name);
+          formData.append('type', this.uploadForm.type);
+          formData.append('description', this.uploadForm.description);
+
+          const res = await panoramaApi.upload(formData);
+          if (res.success) {
+            this.$message.success('上传成功');
+            this.uploadDialogVisible = false;
+            this.loadPanoramas();
+          }
+        } catch (error) {
+          this.$message.error(error.message || '上传失败');
+        } finally {
+          this.uploading = false;
+        }
+      });
+    },
+
+    /**
+     * 显示编辑对话框
+     */
+    showEditDialog(row) {
+      this.editForm = {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        description: row.description || ''
+      };
+      this.editDialogVisible = true;
+    },
+
+    /**
+     * 保存编辑
+     */
+    async handleEdit() {
+      this.$refs.editForm.validate(async (valid) => {
+        if (!valid) return;
+
+        this.saving = true;
+        try {
+          const res = await panoramaApi.update(this.editForm.id, this.editForm);
+          if (res.success) {
+            this.$message.success('保存成功');
+            this.editDialogVisible = false;
+            this.loadPanoramas();
+          }
+        } catch (error) {
+          this.$message.error(error.message || '保存失败');
+        } finally {
+          this.saving = false;
+        }
+      });
+    },
+
+    /**
+     * 设置为主图
+     */
+    async setAsMain(row) {
+      try {
+        await panoramaApi.update(row.id, {
+          name: row.name,
+          description: row.description,
+          type: 'main'
+        });
+        this.$message.success('已设为主图');
+        this.loadPanoramas();
+      } catch (error) {
+        this.$message.error(error.message || '设置失败');
+      }
+    },
+
+    /**
+     * 删除全景图
+     */
+    async handleDelete(row) {
+      try {
+        await this.$confirm(`确定要删除全景图 "${row.name}" 吗？关联的标记点也会被删除。`, '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        });
+
+        const res = await panoramaApi.delete(row.id);
+        if (res.success) {
+          this.$message.success('删除成功');
+          this.loadPanoramas();
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          this.$message.error(error.message || '删除失败');
+        }
+      }
+    },
+
+    /**
+     * 格式化日期
+     */
+    formatDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleString('zh-CN');
+    }
+  }
+};
+</script>
+
+<style scoped>
+.panorama-manage {
+  height: 100%;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+</style>
