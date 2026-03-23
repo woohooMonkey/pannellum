@@ -4,6 +4,27 @@
     <header class="preview-header">
       <h1 class="logo">全景图预览</h1>
       <nav class="header-nav">
+        <!-- AI 导航输入 -->
+        <div class="ai-nav-wrapper">
+          <el-input
+            v-model="aiInputText"
+            placeholder="输入目的地，如：去大厅"
+            class="ai-nav-input"
+            @keyup.enter.native="handleAiNavigate"
+            :disabled="aiLoading || isRoaming"
+            clearable
+          >
+            <el-button
+              slot="append"
+              icon="el-icon-position"
+              @click="handleAiNavigate"
+              :loading="aiLoading"
+              :disabled="!aiInputText.trim() || isRoaming"
+            >
+              {{ aiLoading ? '处理中' : '导航' }}
+            </el-button>
+          </el-input>
+        </div>
         <!-- 场景选择下拉框 -->
         <el-select
           v-model="selectedSceneId"
@@ -128,12 +149,44 @@
         <span>导航点</span>
       </div>
     </div>
+
+    <!-- AI 响应弹窗 -->
+    <el-dialog
+      :visible.sync="aiResponseDialogVisible"
+      title="AI 导航提示"
+      width="420px"
+      center
+      custom-class="ai-response-dialog"
+      :close-on-click-modal="true"
+    >
+      <div class="ai-response-content">
+        <p class="ai-message">{{ aiResponseMessage }}</p>
+        <div class="quick-nav" v-if="aiAvailableScenes.length > 0">
+          <p class="quick-nav-title">快捷导航：</p>
+          <div class="quick-nav-buttons">
+            <el-button
+              v-for="scene in aiAvailableScenes"
+              :key="scene"
+              size="small"
+              type="primary"
+              plain
+              @click="quickNavigateToScene(scene)"
+            >
+              {{ scene }}
+            </el-button>
+          </div>
+        </div>
+      </div>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="aiResponseDialogVisible = false">关闭</el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import PanoramaViewer from '@/components/PanoramaViewer.vue';
-import { panoramaApi } from '@/api';
+import { panoramaApi, aiApi } from '@/api';
 
 export default {
   name: 'Preview',
@@ -146,6 +199,15 @@ export default {
       sceneList: [],           // 所有场景列表
       sceneListLoading: false, // 场景列表加载状态
       selectedSceneId: null,   // 当前选中的场景 ID
+
+      // AI 导航相关
+      aiInputText: '',         // AI 导航输入文本
+      aiLoading: false,        // AI 处理中状态
+
+      // AI 文本响应相关
+      aiResponseDialogVisible: false,  // AI 文本响应弹窗
+      aiResponseMessage: '',       // AI 文本消息
+      aiAvailableScenes: [],      // AI 可用场景列表
 
       // 漫游相关
       roamingPopoverVisible: false,  // 漫游配置弹窗显示状态
@@ -337,6 +399,119 @@ export default {
      */
     roamingProgressFormat(percentage) {
       return `${this.currentRoamingIndex}/${this.roamingSceneIds.length}`;
+    },
+
+    // ==================== AI 导航相关方法 ====================
+
+    /**
+     * 处理 AI 导航请求
+     */
+    async handleAiNavigate() {
+      const input = this.aiInputText.trim();
+      if (!input) {
+        this.$message.warning('请输入目的地');
+        return;
+      }
+
+      this.aiLoading = true;
+      try {
+        const res = await aiApi.navigate(input);
+
+        if (!res.success) {
+          this.$message.error(res.message || '导航失败');
+          // 如果有可用场景列表，提示用户
+          if (res.availableScenes && res.availableScenes.length > 0) {
+            this.$notify({
+              title: '可用场景',
+              message: res.availableScenes.join('、'),
+              type: 'info',
+              duration: 5000
+            });
+          }
+          return;
+        }
+
+        const { action, params, message, availableScenes } = res.data;
+
+        if (action === 'navigate_to_scene') {
+          // 单场景导航
+          this.navigateToScene(params.sceneId, params.sceneName);
+        } else if (action === 'start_scene_tour') {
+          // 多场景漫游
+          this.startAiSceneTour(params.sceneIds, params.sceneNames);
+        } else if (action === 'text_response') {
+          // 文本响应，显示提示和快捷导航
+          this.showAiTextResponse(message, availableScenes);
+        }
+      } catch (error) {
+        console.error('AI 导航请求失败:', error);
+        this.$message.error(error.message || '导航请求失败，请稍后重试');
+      } finally {
+        this.aiLoading = false;
+      }
+    },
+
+    /**
+     * 导航到指定场景
+     * @param {number} sceneId - 场景 ID
+     * @param {string} sceneName - 场景名称
+     */
+    navigateToScene(sceneId, sceneName) {
+      if (this.$refs.viewer) {
+        this.$refs.viewer.loadPanorama(sceneId);
+        this.$message.success(`正在导航到：${sceneName}`);
+        this.aiInputText = '';
+      }
+    },
+
+    /**
+     * 开始 AI 推荐的场景漫游
+     * @param {number[]} sceneIds - 场景 ID 列表
+     * @param {string[]} sceneNames - 场景名称列表
+     */
+    startAiSceneTour(sceneIds, sceneNames) {
+      if (sceneIds.length === 0) {
+        this.$message.warning('没有可漫游的场景');
+        return;
+      }
+
+      // 设置漫游场景
+      this.roamingSceneIds = sceneIds;
+      this.isRoaming = true;
+      this.currentRoamingIndex = 0;
+      this.autoRotateSpeed = -this.ROTATION_SPEED;
+
+      // 加载第一个场景
+      this.loadRoamingScene(0);
+
+      this.$message.success(`开始漫游：${sceneNames.join(' → ')}`);
+      this.aiInputText = '';
+    },
+
+    /**
+     * 显示 AI 文本响应弹窗
+     * @param {string} message - AI 消息
+     * @param {string[]} availableScenes - 可用场景列表
+     */
+    showAiTextResponse(message, availableScenes) {
+      this.aiResponseMessage = message;
+      this.aiAvailableScenes = availableScenes || [];
+      this.aiResponseDialogVisible = true;
+    },
+
+    /**
+     * 快捷导航到指定场景
+     * @param {string} sceneName - 场景名称
+     */
+    quickNavigateToScene(sceneName) {
+      // 根据场景名称查找场景 ID
+      const scene = this.sceneList.find(s => s.name === sceneName);
+      if (scene) {
+        this.aiResponseDialogVisible = false;
+        this.navigateToScene(scene.id, sceneName);
+      } else {
+        this.$message.warning(`未找到场景：${sceneName}`);
+      }
     }
   }
 };
@@ -376,6 +551,35 @@ export default {
 
 .scene-select {
   width: 200px;
+}
+
+/* AI 导航输入框样式 */
+.ai-nav-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.ai-nav-input {
+  width: 320px;
+}
+
+.ai-nav-input >>> .el-input__inner {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.ai-nav-input >>> .el-input__inner::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.ai-nav-input >>> .el-input-group__append {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.ai-nav-input >>> .el-input-group__append .el-button {
+  color: #fff;
 }
 
 /* 下拉框深色主题样式 */
@@ -553,5 +757,36 @@ export default {
     right: 10px;
     bottom: 100px;
   }
+}
+
+/* AI 响应弹窗样式 */
+.ai-response-content {
+  text-align: center;
+}
+
+.ai-message {
+  color: #606266;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+  white-space: pre-wrap;
+}
+
+.quick-nav {
+  padding-top: 15px;
+  border-top: 1px solid #EBEEF5;
+}
+
+.quick-nav-title {
+  color: #909399;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.quick-nav-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
 }
 </style>

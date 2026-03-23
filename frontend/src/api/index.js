@@ -122,4 +122,18 @@ export const markerApi = {
   }
 };
 
+// ==================== AI 导航相关 API ====================
+
+export const aiApi = {
+  // AI 导航请求
+  navigate(input) {
+    return api.post('/ai/navigate', { input });
+  },
+
+  // 获取可用场景列表
+  getScenes() {
+    return api.get('/ai/scenes');
+  }
+};
+
 export default api;

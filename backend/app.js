@@ -7,6 +7,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const panoramaRoutes = require('./routes/panorama');
 const markerRoutes = require('./routes/marker');
+const aiRoutes = require('./routes/ai');
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/panoramas', panoramaRoutes);
 app.use('/api/v1/markers', markerRoutes);
+app.use('/api/v1/ai', aiRoutes);
 
 // 健康检查接口
 app.get('/api/v1/health', (req, res) => {
