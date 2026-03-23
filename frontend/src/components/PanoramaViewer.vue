@@ -53,6 +53,11 @@ export default {
     showBack: {
       type: Boolean,
       default: true
+    },
+    // 自动旋转速度（度/秒，正值逆时针，负值顺时针，false 或 0 不旋转）
+    autoRotate: {
+      type: [Number, Boolean],
+      default: false
     }
   },
   data() {
@@ -165,7 +170,7 @@ export default {
       }));
 
       // 创建 Pannellum 实例
-      this.viewer = window.pannellum.viewer('panorama-viewer', {
+      const config = {
         type: 'equirectangular',
         panorama: this.panorama.file_path,
         autoLoad: true,
@@ -174,7 +179,14 @@ export default {
         showFullscreenCtrl: true,
         showZoomCtrl: true,
         hotSpotDebug: false
-      });
+      };
+
+      // 添加 autoRotate 配置（只有当值为数字且不为 0 时才添加）
+      if (typeof this.autoRotate === 'number' && this.autoRotate !== 0) {
+        config.autoRotate = this.autoRotate;
+      }
+
+      this.viewer = window.pannellum.viewer('panorama-viewer', config);
 
       // 触发加载完成事件
       this.$emit('loaded', this.panorama);
