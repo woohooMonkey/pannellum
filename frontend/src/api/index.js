@@ -87,6 +87,13 @@ export const panoramaApi = {
     return api.put(`/panoramas/${id}`, data);
   },
 
+  // 更新全景图（带文件）
+  updateWithFile(id, formData) {
+    return api.put(`/panoramas/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
   // 删除全景图
   delete(id) {
     return api.delete(`/panoramas/${id}`);

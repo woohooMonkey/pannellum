@@ -166,6 +166,15 @@ export default {
         yaw: parseFloat(marker.yaw),
         type: 'custom',
         cssClass: marker.type === 'navigation' ? 'custom-marker-navigation' : 'custom-marker-normal',
+        // 添加 tooltip 功能
+        createTooltipFunc: (hotSpotDiv, args) => {
+          this.createCustomTooltip(hotSpotDiv, args);
+        },
+        createTooltipArgs: {
+          title: marker.title,
+          description: marker.description,
+          type: marker.type
+        },
         clickHandlerFunc: () => this.handleMarkerClick(marker)
       }));
 
@@ -189,7 +198,37 @@ export default {
       this.viewer = window.pannellum.viewer('panorama-viewer', config);
 
       // 触发加载完成事件
-      this.$emit('loaded', this.panorama);
+      this.$emit('loaded', this.panorama)
+    },
+
+    /**
+     * 创建自定义 tooltip
+     * @param {Object} hotSpotDiv - hotspot 容器
+     * @param {Object} args - 参数 { title, description, type }
+     */
+    createCustomTooltip(hotSpotDiv, args) {
+      const tooltip = document.createElement('div');
+      tooltip.className = 'custom-tooltip';
+      tooltip.innerHTML = `
+        <div class="tooltip-header">
+          <span class="tooltip-icon ${args.type === 'navigation' ? 'navigation' : ''}"></span>
+          <span class="tooltip-title">${args.title}</span>
+        </div>
+        ${args.description ? `<div class="tooltip-desc">${args.description}</div>` : ''}
+      `;
+
+      // 添加 hover 事件
+      hotSpotDiv.addEventListener('mouseenter', () => {
+        tooltip.style.opacity = '1';
+        tooltip.style.transform = 'translateX(-50%) translateY(-10px)';
+      });
+      hotSpotDiv.addEventListener('mouseleave', () => {
+        tooltip.style.opacity = '0';
+        tooltip.style.transform = 'translateX(-50%) translateY(0)';
+      });
+      // 添加到 body（全局样式）
+      document.body.appendChild(tooltip);
+      return tooltip;
     },
 
     /**
@@ -253,7 +292,6 @@ export default {
   height: 100%;
   min-height: 500px;
 }
-
 .loading-overlay {
   position: absolute;
   top: 0;
@@ -267,13 +305,11 @@ export default {
   align-items: center;
   z-index: 100;
 }
-
 .loading-overlay p {
   margin-top: 20px;
   color: #666;
   font-size: 16px;
 }
-
 .no-panorama {
   position: absolute;
   top: 0;
@@ -285,16 +321,15 @@ export default {
   align-items: center;
   background: #f5f7fa;
 }
-
 .back-button {
   position: absolute;
   top: 20px;
   left: 20px;
   z-index: 10;
 }
-
 .marker-description {
   line-height: 1.8;
   color: #606266;
 }
+</style>
 </style>

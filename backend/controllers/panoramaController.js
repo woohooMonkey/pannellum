@@ -178,11 +178,13 @@ async function create(req, res) {
 /**
  * 更新全景图信息
  * PUT /api/v1/panoramas/:id
+ * 支持更换图片文件
  */
 async function update(req, res) {
   try {
     const { id } = req.params;
     const { name, description, type } = req.body;
+    const file = req.file;
 
     // 检查全景图是否存在
     const [existing] = await db.query('SELECT * FROM panoramas WHERE id = ?', [id]);
@@ -199,14 +201,29 @@ async function update(req, res) {
       await db.query('UPDATE panoramas SET type = "scene" WHERE type = "main"');
     }
 
+    // 如果上传了新文件，更新文件路径并删除旧文件
+    let filePath = existing[0].file_path;
+    if (file) {
+      // 删除旧文件
+      const oldFilePath = path.join(__dirname, '..', existing[0].file_path);
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlinkSync(oldFilePath);
+      }
+      // 更新为新文件路径
+      filePath = `/uploads/panoramas/${file.filename}`;
+    }
+
     await db.query(
-      'UPDATE panoramas SET name = ?, description = ?, type = ? WHERE id = ?',
-      [name, description || '', type || existing[0].type, id]
+      'UPDATE panoramas SET name = ?, description = ?, type = ?, file_path = ? WHERE id = ?',
+      [name, description || '', type || existing[0].type, filePath, id]
     );
 
     res.json({
       success: true,
-      message: '全景图更新成功'
+      message: '全景图更新成功',
+      data: {
+        file_path: filePath
+      }
     });
   } catch (error) {
     console.error('更新全景图错误:', error);

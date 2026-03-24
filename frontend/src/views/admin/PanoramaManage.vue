@@ -95,6 +95,30 @@
     <!-- 编辑对话框 -->
     <el-dialog title="编辑全景图" :visible.sync="editDialogVisible" width="500px" :close-on-click-modal="false">
       <el-form ref="editForm" :model="editForm" :rules="editRules" label-width="80px">
+        <el-form-item label="当前图片">
+          <div class="current-image">
+            <el-image
+              :src="editForm.currentFilePath"
+              fit="cover"
+              style="width: 100%; height: 120px;"
+            ></el-image>
+          </div>
+        </el-form-item>
+        <el-form-item label="更换图片">
+          <el-upload
+            ref="editUpload"
+            action="#"
+            :auto-upload="false"
+            :limit="1"
+            accept="image/jpeg,image/jpg,image/png"
+            :on-change="handleEditFileChange"
+            :on-remove="handleEditFileRemove"
+            :file-list="editFileList"
+          >
+            <el-button size="small" type="primary">选择新图片</el-button>
+            <div slot="tip" class="el-upload__tip">不选择则保留原图片，支持 JPG/PNG 格式，最大 50MB</div>
+          </el-upload>
+        </el-form-item>
         <el-form-item label="名称" prop="name">
           <el-input v-model="editForm.name" placeholder="请输入全景图名称"></el-input>
         </el-form-item>
@@ -144,11 +168,14 @@ export default {
       // 编辑相关
       editDialogVisible: false,
       saving: false,
+      editFileList: [],
       editForm: {
         id: null,
         name: '',
         type: '',
-        description: ''
+        description: '',
+        currentFilePath: '',
+        file: null
       },
       editRules: {
         name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
@@ -248,13 +275,30 @@ export default {
      * 显示编辑对话框
      */
     showEditDialog(row) {
+      this.editFileList = [];
       this.editForm = {
         id: row.id,
         name: row.name,
         type: row.type,
-        description: row.description || ''
+        description: row.description || '',
+        currentFilePath: row.file_path,
+        file: null
       };
       this.editDialogVisible = true;
+    },
+
+    /**
+     * 编辑时文件选择变化
+     */
+    handleEditFileChange(file, fileList) {
+      this.editForm.file = file.raw;
+    },
+
+    /**
+     * 编辑时文件移除
+     */
+    handleEditFileRemove() {
+      this.editForm.file = null;
     },
 
     /**
@@ -266,7 +310,23 @@ export default {
 
         this.saving = true;
         try {
-          const res = await panoramaApi.update(this.editForm.id, this.editForm);
+          let res;
+          // 如果选择了新文件，使用 FormData 上传
+          if (this.editForm.file) {
+            const formData = new FormData();
+            formData.append('file', this.editForm.file);
+            formData.append('name', this.editForm.name);
+            formData.append('type', this.editForm.type);
+            formData.append('description', this.editForm.description || '');
+            res = await panoramaApi.updateWithFile(this.editForm.id, formData);
+          } else {
+            res = await panoramaApi.update(this.editForm.id, {
+              name: this.editForm.name,
+              type: this.editForm.type,
+              description: this.editForm.description
+            });
+          }
+
           if (res.success) {
             this.$message.success('保存成功');
             this.editDialogVisible = false;
@@ -341,5 +401,12 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.current-image {
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #dcdfe6;
 }
 </style>

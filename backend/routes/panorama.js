@@ -43,7 +43,7 @@ router.get('/:id', panoramaController.getById);
 
 // 需要鉴权的接口
 router.post('/', authMiddleware, upload.single('file'), panoramaController.create);
-router.put('/:id', authMiddleware, panoramaController.update);
+router.put('/:id', authMiddleware, upload.single('file'), panoramaController.update);
 router.delete('/:id', authMiddleware, panoramaController.remove);
 
 module.exports = router;
