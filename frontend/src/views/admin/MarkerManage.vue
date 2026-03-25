@@ -54,6 +54,7 @@
               stripe
               size="small"
               style="width: 100%;"
+              @row-click="onRowClick"
             >
               <el-table-column prop="id" label="ID" width="60"></el-table-column>
               <el-table-column label="类型" width="80">
@@ -470,6 +471,15 @@ export default {
     onMarkerTypeChange() {
       if (this.markerForm.pitch !== null) {
         this.updateTempMarker();
+      }
+    },
+
+    /**
+     * 点击表格行，     */
+    onRowClick(row) {
+      // 跳转到该标记点位置
+      if (this.viewer) {
+        this.viewer.lookAt(parseFloat(row.pitch), parseFloat(row.yaw), 90);
       }
     },
 
