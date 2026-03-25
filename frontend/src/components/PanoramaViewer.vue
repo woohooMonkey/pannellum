@@ -209,26 +209,31 @@ export default {
     createCustomTooltip(hotSpotDiv, args) {
       const tooltip = document.createElement('div');
       tooltip.className = 'custom-tooltip';
+
+      // 类型标签
+      const typeLabel = args.type === 'navigation' ? '导航点' : '信息点';
+      const typeClass = args.type === 'navigation' ? 'type-navigation' : 'type-normal';
+
       tooltip.innerHTML = `
-        <div class="tooltip-header">
-          <span class="tooltip-icon ${args.type === 'navigation' ? 'navigation' : ''}"></span>
-          <span class="tooltip-title">${args.title}</span>
-        </div>
+        <div class="tooltip-type ${typeClass}">${typeLabel}</div>
+        <div class="tooltip-title">${args.title}</div>
         ${args.description ? `<div class="tooltip-desc">${args.description}</div>` : ''}
       `;
 
-      // 添加 hover 事件
+      // 将 tooltip 添加到 hotspot 容器内
+      hotSpotDiv.appendChild(tooltip);
+
+      // hover 显示/隐藏
       hotSpotDiv.addEventListener('mouseenter', () => {
         tooltip.style.opacity = '1';
-        tooltip.style.transform = 'translateX(-50%) translateY(-10px)';
+        tooltip.style.visibility = 'visible';
+        tooltip.style.transform = 'translateX(-50%) translateY(-5px)';
       });
       hotSpotDiv.addEventListener('mouseleave', () => {
         tooltip.style.opacity = '0';
+        tooltip.style.visibility = 'hidden';
         tooltip.style.transform = 'translateX(-50%) translateY(0)';
       });
-      // 添加到 body（全局样式）
-      document.body.appendChild(tooltip);
-      return tooltip;
     },
 
     /**
