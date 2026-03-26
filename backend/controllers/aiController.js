@@ -57,6 +57,15 @@ const aiController = {
         });
       }
 
+      // 获取所有标记点（包含所属场景信息）
+      const [markers] = await db.query(
+        `SELECT m.id, m.title, m.description, m.type, m.pitch, m.yaw,
+                m.panorama_id, p.name as panorama_name, p.type as panorama_type
+         FROM markers m
+         LEFT JOIN panoramas p ON m.panorama_id = p.id
+         ORDER BY m.title ASC`
+      );
+
       // 获取 API 配置
       const apiKey = process.env.ZHIPU_API_KEY;
       const model = process.env.ZHIPU_MODEL || 'glm-4-flash';
@@ -87,17 +96,49 @@ const aiController = {
         return `- ID: ${s.id}, 名称: "${s.name}", 类型: ${type}${s.description ? `, 描述: ${s.description}` : ''}`;
       }).join('\n');
 
+      // 构建标记点信息
+      const markerDescriptions = markers.length > 0
+        ? markers.map(m => {
+            const markerType = m.type === 'navigation' ? '导航点' : '信息点';
+            return `- ID: ${m.id}, 标题: "${m.title}", 类型: ${markerType}, 所属场景: "${m.panorama_name}"${m.description ? `, 描述: ${m.description}` : ''}`;
+          }).join('\n')
+        : '暂无标记点';
+
       const systemPrompt = `你是一个全景图导航助手。用户会告诉你要去的目的地，你需要根据用户意图调用相应的工具。
 
-可用的场景列表:
+## 可用的场景列表:
 ${sceneDescriptions}
 
-规则:
-1. 如果用户只提到一个场景名称（或部分名称、模糊匹配），调用 navigate_to_scene 工具
-2. 如果用户提到多个场景或要"漫游"/"游览多个地方"， 调用 start_scene_tour 工具
-3. 场景名称支持模糊匹配，找到最相近的场景
-4. 按照用户提到的顺序排列场景
-5. 如果找不到匹配的场景，在回复中告诉用户可用的场景列表`;
+## 可用的标记点列表:
+${markerDescriptions}
+
+## 工具使用规则:
+
+### 1. 场景导航 (navigate_to_scene)
+当用户的目的地是一个"场景名称"时使用：
+- 例如: "去大厅"、"去会议室"、"去主场景"
+- 优先匹配场景名称
+- 返回场景ID和场景名称
+
+### 2. 标记点导航 (navigate_to_marker)
+当用户的目的地是一个"具体位置/展品/标记点"时使用：
+- 例如: "去看前台"、"去入口处"、"去看那个雕塑"
+- 需要返回: markerId(标记点ID), markerTitle(标记点标题), sceneId(所属场景ID), sceneName(所属场景名称)
+- 系统会自动跳转到该标记点所在的场景，并将视角对准该标记点
+
+### 3. 多场景漫游 (start_scene_tour)
+当用户想要"游览多个地方"、"漫游"时使用：
+- 例如: "带我去大厅和会议室"、"漫游所有场景"
+- 按照用户提到的顺序排列场景
+- 返回 sceneIds 数组和 sceneNames 数组
+
+### 匹配优先级:
+1. 首先尝试匹配标记点标题（更具体的位置）
+2. 其次匹配场景名称（更大的区域）
+3. 支持模糊匹配，找到最相近的目标
+
+### 如果找不到匹配:
+在回复中告诉用户可用的场景和标记点列表，让用户重新选择。`;
 
       // 调用智谱 AI API（OpenAI 兼容）
       const response = await axios.post(
@@ -147,7 +188,8 @@ ${sceneDescriptions}
           data: {
             action: 'text_response',
             message: textContent,
-            availableScenes: scenes.map(s => s.name)
+            availableScenes: scenes.map(s => s.name),
+            availableMarkers: markers.map(m => m.title)
           }
         });
       }
@@ -199,6 +241,33 @@ ${sceneDescriptions}
       res.status(500).json({
         success: false,
         message: '获取场景列表失败'
+      });
+    }
+  },
+
+  /**
+   * 获取可用标记点列表（供前端展示）
+   * GET /api/v1/ai/markers
+   */
+  async getMarkers(req, res) {
+    try {
+      const [markers] = await db.query(
+        `SELECT m.id, m.title, m.description, m.type, m.pitch, m.yaw,
+                m.panorama_id, p.name as panorama_name
+         FROM markers m
+         LEFT JOIN panoramas p ON m.panorama_id = p.id
+         ORDER BY m.title ASC`
+      );
+
+      res.json({
+        success: true,
+        data: markers
+      });
+    } catch (error) {
+      console.error('获取标记点列表失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '获取标记点列表失败'
       });
     }
   }

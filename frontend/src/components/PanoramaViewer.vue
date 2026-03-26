@@ -125,8 +125,9 @@ export default {
     /**
      * 加载指定全景图
      * @param {number} id - 全景图 ID
+     * @param {Object} lookAt - 可选，加载后指向的坐标 { pitch, yaw }
      */
-    async loadPanorama(id) {
+    async loadPanorama(id, lookAt = null) {
       this.loading = true;
       try {
         const res = await panoramaApi.getById(id);
@@ -137,7 +138,7 @@ export default {
           // 检查是否为主图
           this.isMainPanorama = res.data.type === 'main';
           this.$nextTick(() => {
-            this.initViewer();
+            this.initViewer(lookAt);
           });
         } else {
           this.$message.error('全景图不存在');
@@ -152,8 +153,9 @@ export default {
 
     /**
      * 初始化 Pannellum 查看器
+     * @param {Object} lookAt - 可选，初始视角坐标 { pitch, yaw }
      */
-    initViewer() {
+    initViewer(lookAt = null) {
       // 销毁已有实例
       if (this.viewer) {
         this.viewer.destroy();
@@ -189,6 +191,12 @@ export default {
         showZoomCtrl: true,
         hotSpotDebug: false
       };
+
+      // 如果指定了初始视角，设置 pitch 和 yaw
+      if (lookAt && lookAt.pitch !== undefined && lookAt.yaw !== undefined) {
+        config.pitch = parseFloat(lookAt.pitch);
+        config.yaw = parseFloat(lookAt.yaw);
+      }
 
       // 添加 autoRotate 配置（只有当值为数字且不为 0 时才添加）
       if (typeof this.autoRotate === 'number' && this.autoRotate !== 0) {

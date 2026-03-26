@@ -162,7 +162,7 @@
       <div class="ai-response-content">
         <p class="ai-message">{{ aiResponseMessage }}</p>
         <div class="quick-nav" v-if="aiAvailableScenes.length > 0">
-          <p class="quick-nav-title">快捷导航：</p>
+          <p class="quick-nav-title">可用场景：</p>
           <div class="quick-nav-buttons">
             <el-button
               v-for="scene in aiAvailableScenes"
@@ -173,6 +173,21 @@
               @click="quickNavigateToScene(scene)"
             >
               {{ scene }}
+            </el-button>
+          </div>
+        </div>
+        <div class="quick-nav" v-if="aiAvailableMarkers.length > 0">
+          <p class="quick-nav-title">可用标记点：</p>
+          <div class="quick-nav-buttons">
+            <el-button
+              v-for="marker in aiAvailableMarkers"
+              :key="marker"
+              size="small"
+              type="success"
+              plain
+              @click="quickNavigateToMarker(marker)"
+            >
+              {{ marker }}
             </el-button>
           </div>
         </div>
@@ -208,6 +223,7 @@ export default {
       aiResponseDialogVisible: false,  // AI 文本响应弹窗
       aiResponseMessage: '',       // AI 文本消息
       aiAvailableScenes: [],      // AI 可用场景列表
+      aiAvailableMarkers: [],      // AI 可用标记点列表
 
       // 漫游相关
       roamingPopoverVisible: false,  // 漫游配置弹窗显示状态
@@ -431,17 +447,20 @@ export default {
           return;
         }
 
-        const { action, params, message, availableScenes } = res.data;
+        const { action, params, message, availableScenes, availableMarkers } = res.data;
 
         if (action === 'navigate_to_scene') {
           // 单场景导航
           this.navigateToScene(params.sceneId, params.sceneName);
+        } else if (action === 'navigate_to_marker') {
+          // 标记点导航 - 跳转到标记点所在场景并指向它
+          this.navigateToMarker(params.markerId, params.markerTitle, params.sceneId, params.sceneName);
         } else if (action === 'start_scene_tour') {
           // 多场景漫游
           this.startAiSceneTour(params.sceneIds, params.sceneNames);
         } else if (action === 'text_response') {
           // 文本响应，显示提示和快捷导航
-          this.showAiTextResponse(message, availableScenes);
+          this.showAiTextResponse(message, availableScenes, availableMarkers);
         }
       } catch (error) {
         console.error('AI 导航请求失败:', error);
@@ -458,6 +477,45 @@ export default {
      */
     navigateToScene(sceneId, sceneName) {
       if (this.$refs.viewer) {
+        this.$refs.viewer.loadPanorama(sceneId);
+        this.$message.success(`正在导航到：${sceneName}`);
+        this.aiInputText = '';
+      }
+    },
+
+    /**
+     * 导航到指定标记点
+     * @param {number} markerId - 标记点 ID
+     * @param {string} markerTitle - 标记点标题
+     * @param {number} sceneId - 场景 ID
+     * @param {string} sceneName - 场景名称
+     */
+    async navigateToMarker(markerId, markerTitle, sceneId, sceneName) {
+      if (!this.$refs.viewer) return;
+
+      try {
+        // 获取标记点详情以获取 pitch 和 yaw
+        const { markerApi } = await import('@/api');
+        const res = await markerApi.getById(markerId);
+
+        if (res.success && res.data) {
+          const marker = res.data;
+          // 加载场景并指向标记点位置
+          this.$refs.viewer.loadPanorama(sceneId, {
+            pitch: marker.pitch,
+            yaw: marker.yaw
+          });
+          this.$message.success(`正在导航到：${markerTitle}（位于${sceneName}）`);
+          this.aiInputText = '';
+        } else {
+          // 如果获取标记点失败，仍然跳转到场景
+          this.$refs.viewer.loadPanorama(sceneId);
+          this.$message.success(`正在导航到：${sceneName}`);
+          this.aiInputText = '';
+        }
+      } catch (error) {
+        console.error('获取标记点信息失败:', error);
+        // 如果获取标记点失败，仍然跳转到场景
         this.$refs.viewer.loadPanorama(sceneId);
         this.$message.success(`正在导航到：${sceneName}`);
         this.aiInputText = '';
@@ -492,10 +550,12 @@ export default {
      * 显示 AI 文本响应弹窗
      * @param {string} message - AI 消息
      * @param {string[]} availableScenes - 可用场景列表
+     * @param {string[]} availableMarkers - 可用标记点列表
      */
-    showAiTextResponse(message, availableScenes) {
+    showAiTextResponse(message, availableScenes, availableMarkers) {
       this.aiResponseMessage = message;
       this.aiAvailableScenes = availableScenes || [];
+      this.aiAvailableMarkers = availableMarkers || [];
       this.aiResponseDialogVisible = true;
     },
 
@@ -511,6 +571,32 @@ export default {
         this.navigateToScene(scene.id, sceneName);
       } else {
         this.$message.warning(`未找到场景：${sceneName}`);
+      }
+    },
+
+    /**
+     * 快捷导航到指定标记点
+     * @param {string} markerTitle - 标记点标题
+     */
+    async quickNavigateToMarker(markerTitle) {
+      try {
+        // 获取标记点列表
+        const { aiApi } = await import('@/api');
+        const res = await aiApi.getMarkers();
+
+        if (res.success && res.data) {
+          // 根据标记点标题查找标记点
+          const marker = res.data.find(m => m.title === markerTitle);
+          if (marker) {
+            this.aiResponseDialogVisible = false;
+            this.navigateToMarker(marker.id, marker.title, marker.panorama_id, marker.panorama_name);
+          } else {
+            this.$message.warning(`未找到标记点：${markerTitle}`);
+          }
+        }
+      } catch (error) {
+        console.error('获取标记点列表失败:', error);
+        this.$message.error('获取标记点信息失败');
       }
     }
   }

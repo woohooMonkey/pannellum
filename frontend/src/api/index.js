@@ -140,6 +140,11 @@ export const aiApi = {
   // 获取可用场景列表
   getScenes() {
     return api.get('/ai/scenes');
+  },
+
+  // 获取可用标记点列表
+  getMarkers() {
+    return api.get('/ai/markers');
   }
 };
 

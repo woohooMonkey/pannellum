@@ -13,4 +13,7 @@ router.post('/navigate', aiController.navigate);
 // GET /api/v1/ai/scenes - 获取场景列表
 router.get('/scenes', aiController.getScenes);
 
+// GET /api/v1/ai/markers - 获取标记点列表
+router.get('/markers', aiController.getMarkers);
+
 module.exports = router;

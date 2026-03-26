@@ -1,135 +1,75 @@
 /**
- * 后端 MCP 工具定义 - 自动生成，请勿手动修改
- * 生成时间: 2026-03-23T06:18:28.822Z
+ * 后端 MCP 工具定义
+ * 更新时间: 2026-03-26
  */
 
 export const tools = [
   {
-    name: 'move',
-    description: '移动对象',
-    inputSchema: {
-        "type": "object",
-        "properties": {
-            "color": {
-                "type": "number",
-                "description": "移动的数值，如100"
-            }
-        },
-        "required": [
-            "value"
-        ]
-    }
-  },
-  {
-    name: 'resize',
-    description: '修改对象的宽度或者高度',
-    inputSchema: {
-        "type": "object",
-        "properties": {
-            "width": {
-                "type": "number",
-                "description": "宽度"
-            },
-            "height": {
-                "type": "umbe",
-                "description": "高度"
-            }
-        },
-        "required": [
-            "message"
-        ]
-    }
-  },
-  {
     name: 'navigate_to_scene',
-    description: '跳转到指定的全景图场景',
+    description: '跳转到指定的全景图场景。当用户想去的"目的地"是一个场景名称时使用此工具。',
     inputSchema: {
-        "type": "object",
-        "properties": {
-            "sceneId": {
-                "type": "number",
-                "description": "目标场景的ID"
-            },
-            "sceneName": {
-                "type": "string",
-                "description": "目标场景的名称"
-            }
+      type: 'object',
+      properties: {
+        sceneId: {
+          type: 'number',
+          description: '目标场景的ID'
         },
-        "required": [
-            "sceneId"
-        ]
+        sceneName: {
+          type: 'string',
+          description: '目标场景的名称'
+        }
+      },
+      required: ['sceneId']
+    }
+  },
+  {
+    name: 'navigate_to_marker',
+    description: '导航到指定的标记点。当用户想去的"目的地"是一个具体的标记点（如某个展品、某个位置）时使用此工具。会自动跳转到标记点所在的场景，并将视角对准该标记点。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        markerId: {
+          type: 'number',
+          description: '目标标记点的ID'
+        },
+        markerTitle: {
+          type: 'string',
+          description: '目标标记点的标题'
+        },
+        sceneId: {
+          type: 'number',
+          description: '标记点所属的场景ID'
+        },
+        sceneName: {
+          type: 'string',
+          description: '标记点所属的场景名称'
+        }
+      },
+      required: ['markerId', 'sceneId']
     }
   },
   {
     name: 'start_scene_tour',
-    description: '开始场景漫游，按照指定顺序依次游览多个场景',
+    description: '开始场景漫游，按照指定顺序依次游览多个场景。当用户想要"游览多个地方"、"漫游"时使用此工具。',
     inputSchema: {
-        "type": "object",
-        "properties": {
-            "sceneIds": {
-                "type": "array",
-                "items": {
-                    "type": "number"
-                },
-                "description": "漫游场景ID列表，按顺序排列"
-            },
-            "sceneNames": {
-                "type": "array",
-                "items": {
-                    "type": "string"
-                },
-                "description": "漫游场景名称列表"
-            }
+      type: 'object',
+      properties: {
+        sceneIds: {
+          type: 'array',
+          items: {
+            type: 'number'
+          },
+          description: '漫游场景ID列表，按顺序排列'
         },
-        "required": [
-            "sceneIds"
-        ]
-    }
-  },
-  {
-    name: 'navigate_to_scene',
-    description: '跳转到指定的全景图场景',
-    inputSchema: {
-        "type": "object",
-        "properties": {
-            "sceneId": {
-                "type": "number",
-                "description": "目标场景的ID"
-            },
-            "sceneName": {
-                "type": "string",
-                "description": "目标场景的名称"
-            }
-        },
-        "required": [
-            "sceneId"
-        ]
-    }
-  },
-  {
-    name: 'start_scene_tour',
-    description: '开始场景漫游，按照指定顺序依次游览多个场景',
-    inputSchema: {
-        "type": "object",
-        "properties": {
-            "sceneIds": {
-                "type": "array",
-                "items": {
-                    "type": "number"
-                },
-                "description": "漫游场景ID列表，按顺序排列"
-            },
-            "sceneNames": {
-                "type": "array",
-                "items": {
-                    "type": "string"
-                },
-                "description": "漫游场景名称列表"
-            }
-        },
-        "required": [
-            "sceneIds"
-        ]
+        sceneNames: {
+          type: 'array',
+          items: {
+            type: 'string'
+          },
+          description: '漫游场景名称列表'
+        }
+      },
+      required: ['sceneIds']
     }
   }
 ];
