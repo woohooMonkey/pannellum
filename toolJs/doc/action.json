@@ -1,0 +1,40 @@
+[
+  {
+    "name": "move",
+    "description": "移动对象",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "color": { "type": "number", "description": "移动的数值，如100" }
+      },
+      "required": ["value"]
+    },
+    "frontend": {
+      "handler": "UI.mv", 
+      "comment": "调用前端UI对象mv方法"
+    },
+    "backend": {
+      "log": true,
+      "comment": "后端记录操作日志"
+    }
+  },
+  {
+    "name": "resize",
+    "description": "修改对象的宽度或者高度",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "width": { "type": "number", "description": "宽度" },
+        "height": { "type": "umbe", "description":"高度" }
+      },
+      "required": ["message"]
+    },
+    "frontend": {
+      "handler": "UI.rs",
+      "comment": "调用前端UI对象rs方法"
+    },
+    "backend": {
+      "log": false
+    }
+  }
+]

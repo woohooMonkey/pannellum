@@ -202,6 +202,8 @@
 <script>
 import PanoramaViewer from '@/components/PanoramaViewer.vue';
 import { panoramaApi, aiApi } from '@/api';
+import SafeExecutor from '@/utils/safeExecutor';
+import { toolDescriptions, isValidTool } from '@/generated/tools';
 
 export default {
   name: 'Preview',
@@ -259,13 +261,21 @@ export default {
       return (this.ROTATION_DEGREES / this.ROTATION_SPEED) * 1000;
     }
   },
+  created() {
+    // 注册工具到安全执行器
+    this.registerTools();
+  },
   mounted() {
     // 获取所有场景列表
     this.fetchSceneList();
+    // 打印已注册的工具（调试用）
+    console.log('[Preview] 已注册工具:', SafeExecutor.getMethodNames());
   },
   beforeDestroy() {
     // 组件销毁时清理定时器
     this.clearRotationTimer();
+    // 清理注册的工具
+    SafeExecutor.clear();
   },
   methods: {
     /**
@@ -420,6 +430,44 @@ export default {
     // ==================== AI 导航相关方法 ====================
 
     /**
+     * 注册工具到安全执行器
+     * 将 Vue 组件的方法注册为工具处理器，实现工具调用与业务逻辑的解耦
+     */
+    registerTools() {
+      // 注册场景导航工具
+      SafeExecutor.register('navigate_to_scene', (params) => {
+        this.navigateToScene(params.sceneId, params.sceneName);
+      }, toolDescriptions.find(t => t.name === 'navigate_to_scene'));
+
+      // 注册标记点导航工具
+      SafeExecutor.register('navigate_to_marker', async (params) => {
+        await this.navigateToMarker(
+          params.markerId,
+          params.markerTitle,
+          params.sceneId,
+          params.sceneName
+        );
+      }, toolDescriptions.find(t => t.name === 'navigate_to_marker'));
+
+      // 注册场景漫游工具
+      SafeExecutor.register('start_scene_tour', (params) => {
+        this.startAiSceneTour(params.sceneIds, params.sceneNames);
+      }, toolDescriptions.find(t => t.name === 'start_scene_tour'));
+
+      // 注册文本响应工具
+      SafeExecutor.register('text_response', (params) => {
+        debugger
+        this.showAiTextResponse(
+          params.message,
+          params.availableScenes,
+          params.availableMarkers
+        );
+      }, toolDescriptions.find(t => t.name === 'text_response'));
+
+      console.log('[Preview] 工具注册完成，共注册', SafeExecutor.getMethodNames().length, '个工具');
+    },
+
+    /**
      * 处理 AI 导航请求
      */
     async handleAiNavigate() {
@@ -449,18 +497,23 @@ export default {
 
         const { action, params, message, availableScenes, availableMarkers } = res.data;
 
-        if (action === 'navigate_to_scene') {
-          // 单场景导航
-          this.navigateToScene(params.sceneId, params.sceneName);
-        } else if (action === 'navigate_to_marker') {
-          // 标记点导航 - 跳转到标记点所在场景并指向它
-          this.navigateToMarker(params.markerId, params.markerTitle, params.sceneId, params.sceneName);
-        } else if (action === 'start_scene_tour') {
-          // 多场景漫游
-          this.startAiSceneTour(params.sceneIds, params.sceneNames);
-        } else if (action === 'text_response') {
-          // 文本响应，显示提示和快捷导航
-          this.showAiTextResponse(message, availableScenes, availableMarkers);
+        // 使用白名单校验工具名称
+        if (!isValidTool(action)) {
+          console.error(`[Preview] 拒绝执行未知工具: ${action}`);
+          this.$message.error(`无效的操作: ${action}`);
+          return;
+        }
+
+        // 使用 SafeExecutor 安全执行工具
+        debugger
+        const result = await SafeExecutor.executeAsync(action, params);
+
+        if (!result.success) {
+          console.error(`[Preview] 工具执行失败:`, result.error);
+          this.$message.error(`操作执行失败: ${result.error}`);
+        } else {
+          // 清空输入
+          this.aiInputText = '';
         }
       } catch (error) {
         console.error('AI 导航请求失败:', error);
