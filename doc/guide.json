@@ -1,0 +1,60 @@
+[
+  {
+    "name": "navigate_to_scene",
+    "description": "跳转到指定的全景图场景",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "sceneId": {
+          "type": "number",
+          "description": "目标场景的ID"
+        },
+        "sceneName": {
+          "type": "string",
+          "description": "目标场景的名称"
+        }
+      },
+      "required": ["sceneId"]
+    },
+    "frontend": {
+      "handler": "viewer.loadPanorama",
+      "comment": "调用全景图查看器加载指定场景"
+    },
+    "backend": {
+      "log": true,
+      "comment": "记录场景跳转日志"
+    }
+  },
+  {
+    "name": "start_scene_tour",
+    "description": "开始场景漫游，按照指定顺序依次游览多个场景",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "sceneIds": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "漫游场景ID列表，按顺序排列"
+        },
+        "sceneNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "漫游场景名称列表"
+        }
+      },
+      "required": ["sceneIds"]
+    },
+    "frontend": {
+      "handler": "viewer.startRoaming",
+      "comment": "调用漫游功能，按顺序展示场景"
+    },
+    "backend": {
+      "log": true,
+      "comment": "记录漫游开始日志"
+    }
+  }
+]
