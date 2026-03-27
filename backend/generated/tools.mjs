@@ -50,7 +50,7 @@ export const tools = [
   },
   {
     name: 'start_scene_tour',
-    description: '开始场景漫游，按照指定顺序依次游览多个场景。当用户想要"游览多个地方"、"漫游"时使用此工具。',
+    description: '开始场景漫游，按照指定顺序依次游览多个场景。当用户想要"游览多个地方"、"漫游"、"先，后等"时使用此工具。',
     inputSchema: {
       type: 'object',
       properties: {

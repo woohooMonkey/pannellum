@@ -6,7 +6,6 @@
  *
  * 注意：处理器(handler)的具体实现需要在 Vue 组件中通过 registerTools() 注册
  */
-
 // 工具描述信息（用于 AI 理解和调用）
 export const toolDescriptions = [
   {
@@ -55,7 +54,7 @@ export const toolDescriptions = [
   },
   {
     name: 'start_scene_tour',
-    description: '开始场景漫游，按照指定顺序依次游览多个场景。当用户想要"游览多个地方"、"漫游"时使用此工具。',
+    description: '开始场景漫游，按照用户输入的文本顺序依次游览多个场景。当用户想要"游览多个地方"、"漫游"时使用此工具。',
     parameters: {
       type: 'object',
       properties: {
@@ -64,7 +63,7 @@ export const toolDescriptions = [
           items: {
             type: 'number'
           },
-          description: '漫游场景ID列表，按顺序排列'
+          description: '漫游场景ID列表，按用户输入的场景顺序排列'
         },
         sceneNames: {
           type: 'array',

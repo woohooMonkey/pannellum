@@ -18,15 +18,11 @@ export const actionMap = {
   },
   'start_scene_tour': {
       "handler": "viewer.startRoaming",
-      "description": "开始场景漫游，按照指定顺序依次游览多个场景"
+      "description": "开始场景漫游，按照用户输入的文本顺序依次游览多个场景"
   },
   'navigate_to_scene': {
       "handler": "viewer.loadPanorama",
       "description": "跳转到指定的全景图场景"
-  },
-  'start_scene_tour': {
-      "handler": "viewer.startRoaming",
-      "description": "开始场景漫游，按照指定顺序依次游览多个场景"
   }
 };
 

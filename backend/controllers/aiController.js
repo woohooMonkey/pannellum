@@ -127,10 +127,12 @@ ${markerDescriptions}
 - 系统会自动跳转到该标记点所在的场景，并将视角对准该标记点
 
 ### 3. 多场景漫游 (start_scene_tour)
-当用户想要"游览多个地方"、"漫游"时使用：
-- 例如: "带我去大厅和会议室"、"漫游所有场景"
-- 按照用户提到的顺序排列场景
-- 返回 sceneIds 数组和 sceneNames 数组
+当用户想要"游览多个地方"、"漫游"、"多个合法的地址"时使用：
+- 例如: "带我去大厅和会议室"、"漫游所有场景"、"先去南门，再去6号楼"
+- 【重要】sceneIds 数组中的场景顺序必须严格按照用户提到的先后顺序排列
+- 用户说"先去A，再去B"，则 sceneIds 必须是 [A的ID, B的ID]，顺序绝对不能反
+- 用户说"先去A，然后去B，最后去C"，则 sceneIds 必须是 [A的ID, B的ID, C的ID]
+- 返回 sceneIds 数组和 sceneNames 数组，两者的顺序必须一致
 
 ### 匹配优先级:
 1. 首先尝试匹配标记点标题（更具体的位置）
@@ -181,15 +183,20 @@ ${markerDescriptions}
           data: toolResult
         });
       } else {
-        // 没有工具调用，返回文本响应
+        // 没有工具调用，返回文本响应（带场景-标记点关联数据）
         const textContent = choice.message?.content || '';
+
+        // 构建场景-标记点关联数据
+        const sceneMarkerData = buildSceneMarkerData(scenes, markers);
+
         res.json({
           success: true,
           data: {
             action: 'text_response',
-            message: textContent,
-            availableScenes: scenes.map(s => s.name),
-            availableMarkers: markers.map(m => m.title)
+            params: {
+              message: textContent,
+              sceneMarkerData: sceneMarkerData
+            }
           }
         });
       }
@@ -272,5 +279,58 @@ ${markerDescriptions}
     }
   }
 };
+
+/**
+ * 构建场景-标记点关联数据
+ * @param {Array} scenes - 场景列表
+ * @param {Array} markers - 标记点列表
+ * @returns {Array} 排序后的场景数据（包含关联的普通标记点）
+ */
+function buildSceneMarkerData(scenes, markers) {
+  // 为每个场景关联其普通标记点（排除导航类型的标记点）
+  const sceneMap = new Map();
+
+  scenes.forEach(scene => {
+    sceneMap.set(scene.id, {
+      id: scene.id,
+      name: scene.name,
+      type: scene.type,
+      description: scene.description,
+      markers: []
+    });
+  });
+
+  // 将普通标记点关联到对应场景
+  markers.forEach(marker => {
+    if (marker.type !== 'navigation' && marker.panorama_id) {
+      const scene = sceneMap.get(marker.panorama_id);
+      if (scene) {
+        scene.markers.push({
+          id: marker.id,
+          title: marker.title,
+          pitch: marker.pitch,
+          yaw: marker.yaw
+        });
+      }
+    }
+  });
+
+  // 转换为数组并排序
+  let result = Array.from(sceneMap.values());
+
+  // 排序规则：
+  // 1. 主场景始终在第一位
+  // 2. 其他场景按标记点数量倒序排列
+  result.sort((a, b) => {
+    // 主场景排第一
+    if (a.type === 'main' && b.type !== 'main') return -1;
+    if (b.type === 'main' && a.type !== 'main') return 1;
+
+    // 其他场景按标记点数量倒序
+    return b.markers.length - a.markers.length;
+  });
+
+  return result;
+}
 
 module.exports = aiController;

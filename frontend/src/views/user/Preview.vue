@@ -154,41 +154,49 @@
     <el-dialog
       :visible.sync="aiResponseDialogVisible"
       title="AI 导航提示"
-      width="420px"
+      width="480px"
       center
       custom-class="ai-response-dialog"
       :close-on-click-modal="true"
     >
       <div class="ai-response-content">
         <p class="ai-message">{{ aiResponseMessage }}</p>
-        <div class="quick-nav" v-if="aiAvailableScenes.length > 0">
-          <p class="quick-nav-title">可用场景：</p>
-          <div class="quick-nav-buttons">
-            <el-button
-              v-for="scene in aiAvailableScenes"
-              :key="scene"
-              size="small"
-              type="primary"
-              plain
-              @click="quickNavigateToScene(scene)"
+
+        <!-- 场景-标记点层级展示 -->
+        <div class="scene-marker-list" v-if="aiSceneMarkerData.length > 0">
+          <p class="list-title">可用场景和标记点：</p>
+          <div
+            v-for="scene in aiSceneMarkerData"
+            :key="scene.id"
+            class="scene-item"
+            :class="{ 'current-scene': isCurrentScene(scene.id) }"
+          >
+            <!-- 场景行 -->
+            <div
+              class="scene-row"
+              :class="{ disabled: isCurrentScene(scene.id) }"
+              @click="handleSceneClick(scene)"
             >
-              {{ scene }}
-            </el-button>
-          </div>
-        </div>
-        <div class="quick-nav" v-if="aiAvailableMarkers.length > 0">
-          <p class="quick-nav-title">可用标记点：</p>
-          <div class="quick-nav-buttons">
-            <el-button
-              v-for="marker in aiAvailableMarkers"
-              :key="marker"
-              size="small"
-              type="success"
-              plain
-              @click="quickNavigateToMarker(marker)"
-            >
-              {{ marker }}
-            </el-button>
+              <span class="scene-name">
+                <i class="el-icon-location" v-if="scene.type === 'main'"></i>
+                {{ scene.name }}
+                <el-tag size="mini" v-if="scene.type === 'main'" type="danger">主</el-tag>
+                <el-tag size="mini" v-if="isCurrentScene(scene.id)" type="info">当前</el-tag>
+              </span>
+              <span class="marker-count">{{ scene.markers.length }} 个标记点</span>
+            </div>
+            <!-- 标记点列表 -->
+            <div class="marker-list" v-if="scene.markers.length > 0">
+              <span
+                v-for="marker in scene.markers"
+                :key="marker.id"
+                class="marker-tag"
+                :class="{ disabled: isCurrentScene(scene.id) }"
+                @click="handleMarkerClick(scene, marker)"
+              >
+                {{ marker.title }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -224,8 +232,7 @@ export default {
       // AI 文本响应相关
       aiResponseDialogVisible: false,  // AI 文本响应弹窗
       aiResponseMessage: '',       // AI 文本消息
-      aiAvailableScenes: [],      // AI 可用场景列表
-      aiAvailableMarkers: [],      // AI 可用标记点列表
+      aiSceneMarkerData: [],       // AI 场景-标记点关联数据
 
       // 漫游相关
       roamingPopoverVisible: false,  // 漫游配置弹窗显示状态
@@ -456,11 +463,9 @@ export default {
 
       // 注册文本响应工具
       SafeExecutor.register('text_response', (params) => {
-        debugger
         this.showAiTextResponse(
           params.message,
-          params.availableScenes,
-          params.availableMarkers
+          params.sceneMarkerData
         );
       }, toolDescriptions.find(t => t.name === 'text_response'));
 
@@ -495,7 +500,7 @@ export default {
           return;
         }
 
-        const { action, params, message, availableScenes, availableMarkers } = res.data;
+        const { action, params } = res.data;
 
         // 使用白名单校验工具名称
         if (!isValidTool(action)) {
@@ -505,7 +510,6 @@ export default {
         }
 
         // 使用 SafeExecutor 安全执行工具
-        debugger
         const result = await SafeExecutor.executeAsync(action, params);
 
         if (!result.success) {
@@ -602,54 +606,53 @@ export default {
     /**
      * 显示 AI 文本响应弹窗
      * @param {string} message - AI 消息
-     * @param {string[]} availableScenes - 可用场景列表
-     * @param {string[]} availableMarkers - 可用标记点列表
+     * @param {Array} sceneMarkerData - 场景-标记点关联数据
      */
-    showAiTextResponse(message, availableScenes, availableMarkers) {
+    showAiTextResponse(message, sceneMarkerData) {
       this.aiResponseMessage = message;
-      this.aiAvailableScenes = availableScenes || [];
-      this.aiAvailableMarkers = availableMarkers || [];
+      this.aiSceneMarkerData = sceneMarkerData || [];
       this.aiResponseDialogVisible = true;
     },
 
     /**
-     * 快捷导航到指定场景
-     * @param {string} sceneName - 场景名称
+     * 判断是否为当前场景
+     * @param {number} sceneId - 场景ID
+     * @returns {boolean}
      */
-    quickNavigateToScene(sceneName) {
-      // 根据场景名称查找场景 ID
-      const scene = this.sceneList.find(s => s.name === sceneName);
-      if (scene) {
-        this.aiResponseDialogVisible = false;
-        this.navigateToScene(scene.id, sceneName);
-      } else {
-        this.$message.warning(`未找到场景：${sceneName}`);
-      }
+    isCurrentScene(sceneId) {
+      return this.currentPanorama && this.currentPanorama.id === sceneId;
     },
 
     /**
-     * 快捷导航到指定标记点
-     * @param {string} markerTitle - 标记点标题
+     * 处理场景点击
+     * @param {Object} scene - 场景数据
      */
-    async quickNavigateToMarker(markerTitle) {
-      try {
-        // 获取标记点列表
-        const { aiApi } = await import('@/api');
-        const res = await aiApi.getMarkers();
+    handleSceneClick(scene) {
+      // 当前场景不跳转
+      if (this.isCurrentScene(scene.id)) {
+        return;
+      }
+      this.aiResponseDialogVisible = false;
+      this.navigateToScene(scene.id, scene.name);
+    },
 
-        if (res.success && res.data) {
-          // 根据标记点标题查找标记点
-          const marker = res.data.find(m => m.title === markerTitle);
-          if (marker) {
-            this.aiResponseDialogVisible = false;
-            this.navigateToMarker(marker.id, marker.title, marker.panorama_id, marker.panorama_name);
-          } else {
-            this.$message.warning(`未找到标记点：${markerTitle}`);
-          }
-        }
-      } catch (error) {
-        console.error('获取标记点列表失败:', error);
-        this.$message.error('获取标记点信息失败');
+    /**
+     * 处理标记点点击
+     * @param {Object} scene - 场景数据
+     * @param {Object} marker - 标记点数据
+     */
+    handleMarkerClick(scene, marker) {
+      // 如果是当前场景，重新加载当前场景并指向标记点
+      if (this.isCurrentScene(scene.id)) {
+        this.$refs.viewer.loadPanorama(scene.id, {
+          pitch: marker.pitch,
+          yaw: marker.yaw
+        });
+        this.$message.success(`已指向：${marker.title}`);
+      } else {
+        // 跳转到标记点所在场景并指向
+        this.aiResponseDialogVisible = false;
+        this.navigateToMarker(marker.id, marker.title, scene.id, scene.name);
       }
     }
   }
@@ -911,21 +914,100 @@ export default {
   white-space: pre-wrap;
 }
 
-.quick-nav {
-  padding-top: 15px;
-  border-top: 1px solid #EBEEF5;
+/* 场景-标记点列表样式 */
+.scene-marker-list {
+  text-align: left;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 10px;
+  background: #f5f7fa;
+  border-radius: 8px;
 }
 
-.quick-nav-title {
+.list-title {
   color: #909399;
   font-size: 13px;
   margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
 }
 
-.quick-nav-buttons {
+.scene-item {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.scene-item.current-scene {
+  opacity: 0.7;
+}
+
+.scene-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.scene-row:hover:not(.disabled) {
+  background-color: #ecf5ff;
+}
+
+.scene-row.disabled {
+  cursor: default;
+  color: #909399;
+}
+
+.scene-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scene-name i {
+  color: #f56c6c;
+}
+
+.marker-count {
+  font-size: 12px;
+  color: #909399;
+}
+
+.marker-list {
+  margin-top: 8px;
+  padding-left: 20px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: center;
+}
+
+.marker-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #409eff;
+  background: #ecf5ff;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.marker-tag:hover:not(.disabled) {
+  background: #409eff;
+  color: #fff;
+}
+
+.marker-tag.disabled {
+  color: #c0c4cc;
+  background: #f4f4f5;
+  cursor: default;
 }
 </style>
