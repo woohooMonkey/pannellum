@@ -20,6 +20,11 @@
         </el-table-column>
         <el-table-column prop="name" label="名称" min-width="150"></el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip></el-table-column>
+        <el-table-column label="当前版本" width="100">
+          <template slot-scope="scope">
+            <el-tag size="small" type="success">v{{ scope.row.current_version || 1 }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="预览" width="100">
           <template slot-scope="scope">
             <el-image
@@ -36,9 +41,16 @@
             {{ formatDate(scope.row.upload_time) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template slot-scope="scope">
             <el-button type="text" size="small" @click="showEditDialog(scope.row)">编辑</el-button>
+            <el-button
+              type="text"
+              size="small"
+              @click="showVersionDialog(scope.row)"
+            >
+              版本历史
+            </el-button>
             <el-button
               type="text"
               size="small"
@@ -119,6 +131,14 @@
             <div slot="tip" class="el-upload__tip">不选择则保留原图片，支持 JPG/PNG 格式，最大 50MB</div>
           </el-upload>
         </el-form-item>
+        <el-form-item label="变更说明" v-if="editForm.file">
+          <el-input
+            type="textarea"
+            v-model="editForm.changeDescription"
+            :rows="2"
+            placeholder="请输入版本变更说明（可选）"
+          ></el-input>
+        </el-form-item>
         <el-form-item label="名称" prop="name">
           <el-input v-model="editForm.name" placeholder="请输入全景图名称"></el-input>
         </el-form-item>
@@ -137,11 +157,59 @@
         <el-button type="primary" :loading="saving" @click="handleEdit">保存</el-button>
       </span>
     </el-dialog>
+
+    <!-- 版本历史对话框 -->
+    <el-dialog title="版本历史" :visible.sync="versionDialogVisible" width="600px" :close-on-click-modal="false">
+      <div class="version-dialog-content">
+        <el-table :data="versionList" v-loading="versionLoading" border stripe>
+          <el-table-column prop="version" label="版本号" width="80"></el-table-column>
+          <el-table-column prop="file_path" label="预览" min-width="100">
+            <template slot-scope="scope">
+              <el-image
+                :src="scope.row.file_path"
+                :preview-src-list="[scope.row.file_path]"
+                fit="cover"
+                style="width: 60px; height: 30px;"
+              ></el-image>
+            </template>
+          </el-table-column>
+          <el-table-column prop="change_description" label="变更说明" min-width="150"></el-table-column>
+          <el-table-column prop="create_time" label="创建时间" width="180">
+            <template slot-scope="scope">
+              {{ formatDate(scope.row.create_time) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="150">
+            <template slot-scope="scope">
+              <el-button
+                type="text"
+                size="small"
+                @click="handleRestoreVersion(scope.row)"
+                :disabled="scope.row.version === panoramaCurrentVersion"
+              >
+                恢复
+              </el-button>
+              <el-button
+                type="text"
+                size="small"
+                @click="handleDeleteVersion(scope.row)"
+                style="color: #F56C6C"
+              >
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <span slot="footer">
+        <el-button @click="versionDialogVisible = false">关闭</el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { panoramaApi } from '@/api';
+import { panoramaApi, versionApi } from '@/api';
 
 export default {
   name: 'PanoramaManage',
@@ -175,12 +243,18 @@ export default {
         type: '',
         description: '',
         currentFilePath: '',
-        file: null
+        file: null,
       },
       editRules: {
         name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
         type: [{ required: true, message: '请选择类型', trigger: 'change' }]
-      }
+      },
+
+      // 版本历史相关
+      versionDialogVisible: false,
+      versionList: [],
+      versionLoading: false,
+      panoramaCurrentVersion: null
     };
   },
   mounted() {
@@ -250,13 +324,13 @@ export default {
         }
 
         this.uploading = true;
-        try {
-          const formData = new FormData();
-          formData.append('file', this.uploadForm.file);
-          formData.append('name', this.uploadForm.name);
-          formData.append('type', this.uploadForm.type);
-          formData.append('description', this.uploadForm.description);
+        const formData = new FormData();
+        formData.append('file', this.uploadForm.file);
+        formData.append('name', this.uploadForm.name);
+        formData.append('type', this.uploadForm.type);
+        formData.append('description', this.uploadForm.description || '');
 
+        try {
           const res = await panoramaApi.upload(formData);
           if (res.success) {
             this.$message.success('上传成功');
@@ -282,7 +356,7 @@ export default {
         type: row.type,
         description: row.description || '',
         currentFilePath: row.file_path,
-        file: null
+        file: null,
       };
       this.editDialogVisible = true;
     },
@@ -318,6 +392,8 @@ export default {
             formData.append('name', this.editForm.name);
             formData.append('type', this.editForm.type);
             formData.append('description', this.editForm.description || '');
+            formData.append('change_description', this.editForm.changeDescription || '');
+
             res = await panoramaApi.updateWithFile(this.editForm.id, formData);
           } else {
             res = await panoramaApi.update(this.editForm.id, {
@@ -344,14 +420,17 @@ export default {
      * 设置为主图
      */
     async setAsMain(row) {
+      if (row.type === 'main') return;
       try {
-        await panoramaApi.update(row.id, {
+        const res = await panoramaApi.update(row.id, {
           name: row.name,
           description: row.description,
           type: 'main'
         });
-        this.$message.success('已设为主图');
-        this.loadPanoramas();
+        if (res.success) {
+          this.$message.success('已设为主图');
+          this.loadPanoramas();
+        }
       } catch (error) {
         this.$message.error(error.message || '设置失败');
       }
@@ -387,6 +466,76 @@ export default {
       if (!dateStr) return '';
       const date = new Date(dateStr);
       return date.toLocaleString('zh-CN');
+    },
+
+    // ==================== 版本历史相关方法 ====================
+
+    /**
+     * 显示版本历史对话框
+     */
+    async showVersionDialog(row) {
+      this.versionList = [];
+      this.versionLoading = true;
+      this.panoramaCurrentVersion = row.current_version;
+      this.versionDialogVisible = true;
+      try {
+        const res = await versionApi.getList(row.id);
+        if (res.success) {
+          this.versionList = res.data.versions;
+        }
+      } catch (error) {
+        this.$message.error('获取版本历史失败');
+      } finally {
+        this.versionLoading = false;
+      }
+    },
+
+    /**
+     * 恢复到指定版本
+     */
+    async handleRestoreVersion(row) {
+      try {
+        await this.$confirm(`确定恢复到版本 ${row.version} 吗?`, '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        });
+
+        const description = row.change_description || `恢复自版本 ${row.version}`;
+        const res = await versionApi.restore(row.panorama_id, row.version, { change_description: description });
+        if (res.success) {
+          this.$message.success('恢复成功');
+          this.versionDialogVisible = false;
+          this.loadPanoramas();
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          this.$message.error(error.message || '恢复失败');
+        }
+      }
+    },
+
+    /**
+     * 删除指定版本
+     */
+    async handleDeleteVersion(row) {
+      try {
+        await this.$confirm(`确定删除版本 ${row.version} 吗?`, '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        });
+
+        const res = await versionApi.delete(row.panorama_id, row.version);
+        if (res.success) {
+          this.$message.success('版本删除成功');
+          this.showVersionDialog({ id: row.panorama_id, });
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          this.$message.error(error.message || '删除失败');
+        }
+      }
     }
   }
 };

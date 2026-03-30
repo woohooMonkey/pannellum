@@ -148,4 +148,35 @@ export const aiApi = {
   }
 };
 
+// ==================== 版本管理相关 API ====================
+
+export const versionApi = {
+  // 获取全景图的版本列表
+  getList(panoramaId) {
+    return api.get(`/panoramas/${panoramaId}/versions`);
+  },
+
+  // 获取指定版本详情
+  getById(panoramaId, version) {
+    return api.get(`/panoramas/${panoramaId}/versions/${version}`);
+  },
+
+  // 创建新版本（上传新图片）
+  create(panoramaId, formData) {
+    return api.post(`/panoramas/${panoramaId}/versions`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // 恢复到指定版本
+  restore(panoramaId, version, data) {
+    return api.put(`/panoramas/${panoramaId}/versions/${version}/restore`, data);
+  },
+
+  // 删除指定版本
+  delete(panoramaId, version) {
+    return api.delete(`/panoramas/${panoramaId}/versions/${version}`);
+  }
+};
+
 export default api;

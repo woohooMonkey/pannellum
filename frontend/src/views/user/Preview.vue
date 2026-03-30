@@ -42,6 +42,16 @@
           />
         </el-select>
         <el-link type="info" href="/admin/login">管理员登录</el-link>
+        <!-- 版本对比按钮 -->
+        <el-button
+          type="primary"
+          size="small"
+          icon="el-icon-data-analysis"
+          @click="goCompare"
+          :disabled="isRoaming"
+        >
+          版本对比
+        </el-button>
       </nav>
     </header>
 
@@ -654,6 +664,13 @@ export default {
         this.aiResponseDialogVisible = false;
         this.navigateToMarker(marker.id, marker.title, scene.id, scene.name);
       }
+    },
+
+    /**
+     * 跳转到版本对比页面
+     */
+    goCompare() {
+      this.$router.push('/compare');
     }
   }
 };

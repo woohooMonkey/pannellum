@@ -15,6 +15,12 @@ const routes = [
     meta: { title: '全景图预览' }
   },
   {
+    path: '/compare',
+    name: 'VersionCompare',
+    component: () => import('../views/user/VersionCompare.vue'),
+    meta: { title: '版本对比' }
+  },
+  {
     path: '/admin/login',
     name: 'AdminLogin',
     component: () => import('../views/admin/Login.vue'),

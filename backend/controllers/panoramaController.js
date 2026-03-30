@@ -150,22 +150,45 @@ async function create(req, res) {
       await db.query('UPDATE panoramas SET type = "scene" WHERE type = "main"');
     }
 
-    const [result] = await db.query(
-      'INSERT INTO panoramas (type, name, description, file_path) VALUES (?, ?, ?, ?)',
-      [panoramaType, name, description || '', filePath]
-    );
+    // 开始事务
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    res.status(201).json({
-      success: true,
-      message: '全景图上传成功',
-      data: {
-        id: result.insertId,
-        type: panoramaType,
-        name,
-        description,
-        file_path: filePath
-      }
-    });
+    try {
+      // 插入全景图记录（初始版本为1）
+      const [result] = await connection.query(
+        'INSERT INTO panoramas (type, name, description, file_path, current_version) VALUES (?, ?, ?, ?, 1)',
+        [panoramaType, name, description || '', filePath]
+      );
+
+      const panoramaId = result.insertId;
+
+      // 创建初始版本记录
+      await connection.query(
+        'INSERT INTO panorama_versions (panorama_id, version, file_path, change_description) VALUES (?, ?, ?, ?)',
+        [panoramaId, 1, filePath, '初始版本']
+      );
+
+      await connection.commit();
+
+      res.status(201).json({
+        success: true,
+        message: '全景图上传成功',
+        data: {
+          id: panoramaId,
+          type: panoramaType,
+          name,
+          description,
+          file_path: filePath,
+          current_version: 1
+        }
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error('上传全景图错误:', error);
     res.status(500).json({
@@ -178,12 +201,12 @@ async function create(req, res) {
 /**
  * 更新全景图信息
  * PUT /api/v1/panoramas/:id
- * 支持更换图片文件
+ * 支持更换图片文件（会创建新版本）
  */
 async function update(req, res) {
   try {
     const { id } = req.params;
-    const { name, description, type } = req.body;
+    const { name, description, type, change_description } = req.body;
     const file = req.file;
 
     // 检查全景图是否存在
@@ -201,28 +224,57 @@ async function update(req, res) {
       await db.query('UPDATE panoramas SET type = "scene" WHERE type = "main"');
     }
 
-    // 如果上传了新文件，更新文件路径并删除旧文件
+    // 如果上传了新文件，创建新版本（保留旧文件）
     let filePath = existing[0].file_path;
-    if (file) {
-      // 删除旧文件
-      const oldFilePath = path.join(__dirname, '..', existing[0].file_path);
-      if (fs.existsSync(oldFilePath)) {
-        fs.unlinkSync(oldFilePath);
-      }
-      // 更新为新文件路径
-      filePath = `/uploads/panoramas/${file.filename}`;
-    }
+    let newVersion = existing[0].current_version || 1;
 
-    await db.query(
-      'UPDATE panoramas SET name = ?, description = ?, type = ?, file_path = ? WHERE id = ?',
-      [name, description || '', type || existing[0].type, filePath, id]
-    );
+    if (file) {
+      // 获取最大版本号
+      const [maxVersion] = await db.query(
+        'SELECT MAX(version) as max_version FROM panorama_versions WHERE panorama_id = ?',
+        [id]
+      );
+      newVersion = (maxVersion[0].max_version || 0) + 1;
+      filePath = `/uploads/panoramas/${file.filename}`;
+
+      // 开始事务
+      const connection = await db.getConnection();
+      await connection.beginTransaction();
+
+      try {
+        // 插入新版本记录
+        await connection.query(
+          'INSERT INTO panorama_versions (panorama_id, version, file_path, change_description) VALUES (?, ?, ?, ?)',
+          [id, newVersion, filePath, change_description || '']
+        );
+
+        // 更新全景图表的当前版本和文件路径
+        await connection.query(
+          'UPDATE panoramas SET name = ?, description = ?, type = ?, current_version = ?, file_path = ? WHERE id = ?',
+          [name, description || '', type || existing[0].type, newVersion, filePath, id]
+        );
+
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+    } else {
+      // 没有上传新文件，只更新基本信息
+      await db.query(
+        'UPDATE panoramas SET name = ?, description = ?, type = ? WHERE id = ?',
+        [name, description || '', type || existing[0].type, id]
+      );
+    }
 
     res.json({
       success: true,
       message: '全景图更新成功',
       data: {
-        file_path: filePath
+        file_path: filePath,
+        current_version: newVersion
       }
     });
   } catch (error) {

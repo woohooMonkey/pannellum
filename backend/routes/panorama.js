@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const panoramaController = require('../controllers/panoramaController');
 const authMiddleware = require('../middleware/auth');
+const versionRoutes = require('./version');
 
 // 配置 multer 文件上传
 const storage = multer.diskStorage({
@@ -45,5 +46,8 @@ router.get('/:id', panoramaController.getById);
 router.post('/', authMiddleware, upload.single('file'), panoramaController.create);
 router.put('/:id', authMiddleware, upload.single('file'), panoramaController.update);
 router.delete('/:id', authMiddleware, panoramaController.remove);
+
+// 版本管理子路由
+router.use('/:id/versions', versionRoutes);
 
 module.exports = router;
