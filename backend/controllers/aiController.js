@@ -57,12 +57,14 @@ const aiController = {
         });
       }
 
-      // 获取所有标记点（包含所属场景信息）
+      // 获取所有标记点（包含所属场景信息，排除导航类型的标记点）
+      // 导航点仅用于场景间跳转，不应作为用户目的地选项
       const [markers] = await db.query(
         `SELECT m.id, m.title, m.description, m.type, m.pitch, m.yaw,
                 m.panorama_id, p.name as panorama_name, p.type as panorama_type
          FROM markers m
          LEFT JOIN panoramas p ON m.panorama_id = p.id
+         WHERE m.type != 'navigation'
          ORDER BY m.title ASC`
       );
 
@@ -118,12 +120,13 @@ ${markerDescriptions}
 当用户的目的地是一个"场景名称"时使用：
 - 例如: "去大厅"、"去会议室"、"去主场景"
 - 优先匹配场景名称
-- 返回场景ID和场景名称
+- 【重要】必须同时返回 sceneId 和 sceneName 两个参数，不能只返回 sceneId
 
 ### 2. 标记点导航 (navigate_to_marker)
 当用户的目的地是一个"具体位置/展品/标记点"时使用：
 - 例如: "去看前台"、"去入口处"、"去看那个雕塑"
 - 需要返回: markerId(标记点ID), markerTitle(标记点标题), sceneId(所属场景ID), sceneName(所属场景名称)
+- 【重要】所有四个参数都必须返回，不能遗漏
 - 系统会自动跳转到该标记点所在的场景，并将视角对准该标记点
 
 ### 3. 多场景漫游 (start_scene_tour)
@@ -132,7 +135,7 @@ ${markerDescriptions}
 - 【重要】sceneIds 数组中的场景顺序必须严格按照用户提到的先后顺序排列
 - 用户说"先去A，再去B"，则 sceneIds 必须是 [A的ID, B的ID]，顺序绝对不能反
 - 用户说"先去A，然后去B，最后去C"，则 sceneIds 必须是 [A的ID, B的ID, C的ID]
-- 返回 sceneIds 数组和 sceneNames 数组，两者的顺序必须一致
+- 【重要】必须同时返回 sceneIds 数组和 sceneNames 数组，两者的顺序必须一致
 
 ### 匹配优先级:
 1. 首先尝试匹配标记点标题（更具体的位置）

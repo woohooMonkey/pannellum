@@ -1,6 +1,6 @@
 /**
  * 后端工具执行器
- * 更新时间: 2026-03-26
+ * 更新时间: 2026-03-31
  */
 
 /**
@@ -19,7 +19,7 @@ export function executeTool(toolName, params = {}) {
         action: 'navigate_to_scene',
         params: {
           sceneId: params.sceneId,
-          sceneName: params.sceneName
+          sceneName: params.sceneName || ''
         },
         timestamp: new Date().toISOString()
       };
@@ -32,9 +32,9 @@ export function executeTool(toolName, params = {}) {
         action: 'navigate_to_marker',
         params: {
           markerId: params.markerId,
-          markerTitle: params.markerTitle,
+          markerTitle: params.markerTitle || '',
           sceneId: params.sceneId,
-          sceneName: params.sceneName
+          sceneName: params.sceneName || ''
         },
         timestamp: new Date().toISOString()
       };
@@ -46,8 +46,8 @@ export function executeTool(toolName, params = {}) {
         success: true,
         action: 'start_scene_tour',
         params: {
-          sceneIds: params.sceneIds,
-          sceneNames: params.sceneNames
+          sceneIds: params.sceneIds || [],
+          sceneNames: params.sceneNames || []
         },
         timestamp: new Date().toISOString()
       };
