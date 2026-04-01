@@ -1,10 +1,5 @@
 <template>
   <div class="preview-page">
-    <!-- 顶部导航栏 -->
-    <header class="preview-header">
-      <h1 class="page-title">全景图预览</h1>
-    </header>
-
     <!-- 主要内容区域 -->
     <div class="main-container">
       <!-- 左侧全景图区域 -->
@@ -15,14 +10,39 @@
           @loaded="onPanoramaLoaded"
         />
 
+        <!-- 顶部AI导航搜索区域 -->
+        <div class="top-ai-search" v-if="!isRoaming">
+          <el-input
+            v-model="aiInputText"
+            placeholder="输入目的地，如：去大厅"
+            class="ai-search-input"
+            @keyup.enter.native="handleAiNavigate"
+            :disabled="aiLoading"
+            clearable
+          >
+            <el-button
+              slot="append"
+              icon="el-icon-position"
+              @click="handleAiNavigate"
+              :loading="aiLoading"
+              :disabled="!aiInputText.trim()"
+            >
+              {{ aiLoading ? '处理中' : '导航' }}
+            </el-button>
+          </el-input>
+        </div>
+
         <!-- 当前场景信息 -->
-        <div class="scene-info" v-if="currentPanorama">
+        <div class="scene-info" v-if="showSceneInfo && currentPanorama">
           <div class="scene-title">
             {{ currentPanorama.name }}
             <span v-if="isRoaming" class="roaming-badge">漫游中</span>
             <el-tag size="mini" v-if="currentPanorama.type === 'main'" type="danger">主图</el-tag>
           </div>
           <div class="scene-desc" v-if="currentPanorama.description">{{ currentPanorama.description }}</div>
+         <!--  <div class="marker-count-info">
+            标记点数量：{{ currentPanorama.marker_count || 0 }}
+          </div> -->
           <div class="roaming-progress" v-if="isRoaming">
             <el-progress
               :percentage="roamingProgress"
@@ -64,103 +84,85 @@
             <span>导航点</span>
           </div>
         </div>
+
+        <!-- 场景列表切换按钮 -->
+        <div class="tool-item scene-toggle-btn" v-if="sceneList.length > 0 && !isRoaming" @click="toggleSceneList">
+          <div class="tool-icon-wrapper">
+            <svg class="tool-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path v-if="!showSceneList" d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path v-else d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="tool-title">场景选择</div>
+        </div>
       </main>
 
-      <!-- 右侧工具面板 -->
-      <aside class="tools-panel">
-        <div class="panel-section">
-          <h3 class="section-title">AI 导航</h3>
-          <el-input
-            v-model="aiInputText"
-            placeholder="输入目的地，如：去大厅"
-            class="ai-input"
-            @keyup.enter.native="handleAiNavigate"
-            :disabled="aiLoading || isRoaming"
-            clearable
-          >
-            <el-button
-              slot="append"
-              icon="el-icon-position"
-              @click="handleAiNavigate"
-              :loading="aiLoading"
-              :disabled="!aiInputText.trim() || isRoaming"
-            >
-              {{ aiLoading ? '处理中' : '导航' }}
-            </el-button>
-          </el-input>
-        </div>
+      <!-- 右侧工具栏 -->
+      <aside class="tools-sidebar">
+        <div class="tool-list">
+          <!-- 全屏按钮 -->
+          <div class="tool-item" @click="toggleFullscreen">
+            <div class="tool-icon-wrapper">
+              <svg class="tool-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tool-title">全屏</div>
+          </div>
 
-        <div class="panel-section">
-          <h3 class="section-title">场景选择</h3>
-          <el-select
-            v-model="selectedSceneId"
-            placeholder="选择场景"
-            class="scene-select"
-            @change="onSceneChange"
-            :loading="sceneListLoading"
-            :disabled="isRoaming"
-          >
-            <el-option
-              v-for="scene in sortedScenes"
-              :key="scene.id"
-              :label="scene.name + (scene.type === 'main' ? ' (主图)' : '')"
-              :value="scene.id"
-            />
-          </el-select>
-        </div>
+          <!-- 漫游按钮 -->
+          <div class="tool-item" @click="roamingPopoverVisible = true" :disabled="isRoaming">
+            <div class="tool-icon-wrapper">
+              <svg class="tool-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="tool-title">漫游</div>
+          </div>
 
-        <div class="panel-section">
-          <h3 class="section-title">功能</h3>
-          <div class="function-buttons">
-            <el-button
-              type="primary"
-              icon="el-icon-video-play"
-              @click="roamingPopoverVisible = true"
-              :disabled="isRoaming"
-              class="function-btn"
-            >
-              漫游模式
-            </el-button>
-            <el-button
-              type="primary"
-              icon="el-icon-data-analysis"
-              @click="goCompare"
-              :disabled="isRoaming"
-              class="function-btn"
-            >
-              版本对比
-            </el-button>
-            <el-link
-              type="info"
-              href="/admin/login"
-              class="admin-link"
-            >管理员登录</el-link>
+          <!-- 版本对比按钮 -->
+          <div class="tool-item" @click="goCompare" :disabled="isRoaming">
+            <div class="tool-icon-wrapper">
+              <svg class="tool-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M3 12h.01M21 12h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tool-title">对比</div>
+          </div>
+
+          <!-- 管理员登录按钮 -->
+          <div class="tool-item admin-login" @click="goToAdmin">
+            <div class="tool-icon-wrapper">
+              <svg class="tool-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tool-title">管理员</div>
+          </div>
+
+          <!-- 查看详情按钮 -->
+          <div class="tool-item" @click="toggleSceneInfo" :class="{ 'active': showSceneInfo }">
+            <div class="tool-icon-wrapper">
+              <svg class="tool-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="12" y1="16" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="12" y1="8" x2="12.01" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tool-title">详情</div>
           </div>
         </div>
 
-        <div class="panel-section">
-          <h3 class="section-title">系统信息</h3>
-          <div class="system-info">
-            <div class="info-item">
-              <span class="info-label">场景总数：</span>
-              <span class="info-value">{{ sceneList?.length || 0 }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">当前场景：</span>
-              <span class="info-value">{{ currentPanorama?.name || '无' }}</span>
-            </div>
-            <div class="info-item" v-if="currentPanorama">
-              <span class="info-label">标记点数量：</span>
-              <span class="info-value">{{ currentPanorama.marker_count || 0 }}</span>
-            </div>
-          </div>
-        </div>
-      </aside>
+          </aside>
     </div>
 
-    <!-- 底部场景列表（居中显示） -->
-    <section class="scene-list-container" v-if="sceneList.length > 0">
-      <h3 class="scene-list-title">场景列表</h3>
+    <!-- 底部场景列表 -->
+    <section class="scene-list-container" v-if="showSceneList && sceneList.length > 0">
       <div class="scene-cards">
         <div
           v-for="scene in sortedScenes"
@@ -169,15 +171,21 @@
           :class="{ 'current-scene': isCurrentScene(scene.id) }"
           @click="handleSceneCardClick(scene.id)"
         >
-          <div class="scene-card-info">
-            <h4 class="scene-card-name">
-              {{ scene.name }}
-              <el-tag size="mini" v-if="scene.type === 'main'" type="danger">主</el-tag>
-            </h4>
-            <p class="scene-card-desc" v-if="scene.description">{{ scene.description }}</p>
-          </div>
-          <div class="scene-card-actions">
-            <span class="marker-count">{{ scene.marker_count || 0 }} 个标记点</span>
+          <div class="scene-card-image">
+            <img
+              :src="getPanoramaImageUrl(scene)"
+              :alt="scene.name"
+              @error="handleImageError"
+              @load="handleImageLoad"
+            />
+            <div class="scene-card-overlay">
+              <div class="scene-card-info">
+                <span class="scene-card-name">
+                  {{ scene.name }}
+                  <el-tag size="mini" v-if="scene.type === 'main'" type="danger" style="margin-left: 4px;;">主</el-tag>
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -198,6 +206,7 @@
           placeholder="请选择场景"
           class="roaming-scene-select"
           :loading="sceneListLoading"
+          style="margin: 10px 0;"
         >
           <el-option
             v-for="scene in sceneList"
@@ -224,7 +233,7 @@
         title="AI 导航提示"
         width="480px"
         center
-        custom-class="ai-response-dialog"
+        custom-class="ai-dialog"
         :close-on-click-modal="true"
       >
         <div class="ai-response-content">
@@ -312,7 +321,10 @@ export default {
       rotationStartTime: 0,          // 当前场景开始旋转的时间戳
       rotationTimeout: null,         // 旋转完成的定时器
       ROTATION_DEGREES: 360,         // 旋转一周的角度
-      ROTATION_SPEED: 10           // 旋转速度（度/秒）
+      ROTATION_SPEED: 10,           // 旋转速度（度/秒）
+      showSceneList: false,          // 是否显示场景列表
+      isFullscreen: false,          // 是否全屏
+      showSceneInfo: true          // 是否显示场景信息
     };
   },
   computed: {
@@ -577,7 +589,11 @@ export default {
 
       this.aiLoading = true;
       try {
-        const res = await aiApi.navigate(input);
+        const res = await aiApi.navigate(
+          input,
+          this.currentPanorama?.id,
+          this.currentPanorama?.name
+        );
 
         if (!res.success) {
           this.$message.error(res.message || '导航失败');
@@ -754,11 +770,85 @@ export default {
      */
     goCompare() {
       this.$router.push('/compare');
+    },
+
+    /**
+     * 处理图片加载错误
+     * @param {Event} event - 图片错误事件
+     */
+    handleImageError(event) {
+      // 图片加载失败时显示默认占位图
+      event.target.src = 'data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23f0f0f0"/><text x="50" y="50" font-size="14" fill="%23999" text-anchor="middle" dy=".3em">图片加载失败</text></svg>';
+    },
+
+    /**
+     * 处理图片加载成功
+     * @param {Event} event - 图片加载事件
+     */
+    handleImageLoad(event) {
+      // 图片加载成功时的处理
+      event.target.classList.add('loaded');
+    },
+
+    /**
+     * 获取全景图图片URL
+     * @param {Object} scene - 场景数据
+     * @returns {string} 图片URL
+     */
+    getPanoramaImageUrl(scene) {
+      if (scene.file_path) {
+        // scene.file_path 已经包含 /uploads 前缀
+        return scene.file_path;
+      }
+      // 返回默认占位图
+      return 'data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23f0f0f0"/><text x="50" y="50" font-size="14" fill="%23999" text-anchor="middle" dy=".3em">暂无图片</text></svg>';
+    },
+
+    /**
+     * 切换全屏
+     */
+    toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+        this.isFullscreen = true;
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+          this.isFullscreen = false;
+        }
+      }
+    },
+
+    /**
+     * 跳转到管理员登录页面
+     */
+    goToAdmin() {
+      window.location.href = '/admin/login';
+    },
+
+    /**
+     * 切换场景信息显示
+     */
+    toggleSceneInfo() {
+      this.showSceneInfo = !this.showSceneInfo;
+    },
+
+    /**
+     * 切换场景列表显示状态
+     */
+    toggleSceneList() {
+      this.showSceneList = !this.showSceneList;
     }
   }
 };
 </script>
+<style>
+/* 隐藏 Pannellum 控制栏 */
+.pnlm-controls-container {
+  display: none !important;
+}
 
+</style>
 <style scoped>
 .preview-page {
   height: 100vh;
@@ -767,27 +857,10 @@ export default {
   flex-direction: column;
 }
 
-/* 顶部导航栏 */
-.preview-header {
-  background: #fff;
-  padding: 10px 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  z-index: 100;
-  height: 50px;
-}
-
-.page-title {
-  text-align: center;
-  font-size: 24px;
-  color: #2c3e50;
-  margin: 0;
-  font-weight: 500;
-}
-
 /* 主要内容区域 */
 .main-container {
   position: relative;
-  height: 100vh; /* 使用整个视口高度 */
+  height: 100vh;
 }
 
 /* 左侧全景图区域 */
@@ -800,102 +873,171 @@ export default {
   overflow: hidden;
 }
 
-/* 右侧工具面板 */
-.tools-panel {
+/* 顶部AI导航搜索区域 */
+.top-ai-search {
   position: absolute;
   top: 20px;
-  right: 20px;
-  width: 320px;
-  max-height: calc(100vh - 120px); /* 减去顶部header和底部空间 */
-  background: rgba(255, 255, 255, 0.95);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 16px 24px;
   border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  padding: 24px;
-  overflow-y: auto;
-  z-index: 50;
   backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  width: 480px;
+  max-width: calc(100% - 40px);
 }
 
-.panel-section {
-  margin-bottom: 28px;
-}
-
-.panel-section:last-child {
-  margin-bottom: 0;
-}
-
-.section-title {
-  font-size: 16px;
-  color: #2c3e50;
-  margin: 0 0 16px 0;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.section-title::before {
-  content: '';
-  width: 3px;
-  height: 16px;
-  background: #409eff;
-  border-radius: 2px;
-}
-
-/* AI 输入框样式 */
-.ai-input {
-  margin-bottom: 0;
-}
-
-.ai-input >>> .el-input__inner {
-  height: 40px;
-}
-
-.ai-input >>> .el-input__inner::placeholder {
-  color: #c0c4cc;
-}
-
-/* 下拉框样式 */
-.scene-select {
+.ai-search-input {
   width: 100%;
 }
 
-.scene-select >>> .el-input__inner {
-  height: 40px;
+.ai-search-input >>> .el-input__inner {
+  height: 44px;
+  background: rgba(255, 255, 255, 0.95);
+  border: none;
+  font-size: 15px;
 }
 
-/* 功能按钮组 */
-.function-buttons {
+.ai-search-input >>> .el-input__inner::placeholder {
+  color: #909399;
+}
+
+.ai-search-input >>> .el-input-group__append {
+  background: #409eff;
+  border: none;
+  padding: 0 20px;
+}
+
+.ai-search-input >>> .el-input-group__append .el-button {
+  color: #fff;
+  font-weight: 500;
+}
+
+/* 右侧工具栏 */
+.tools-sidebar {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  z-index: 50;
+}
+
+/* 工具列表 */
+.tool-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 12px;
 }
 
-.function-btn {
-  height: 40px;
-  font-size: 14px;
+/* 工具项 */
+.tool-item {
+  width: 48px;
+  height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+.pnlm-controls{
+  display: none;
 }
 
-.admin-link {
-  font-size: 14px;
-  text-align: center;
-  display: block;
-  padding: 0;
+/* 图标圆形背景 */
+.tool-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
 }
+
+.tool-item:hover:not(:disabled) .tool-icon-wrapper {
+ /*  background: rgba(0, 0, 0, 0.5); */
+  transform: scale(1.05);
+}
+
+/* .tool-item.active .tool-icon-wrapper {
+  background: rgba(64, 158, 255, 0.3);
+} */
+
+.tool-item:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* .tool-item.active {
+  background: rgba(64, 158, 255, 0.3);
+  border-color: rgba(64, 158, 255, 0.5);
+} */
+
+.tool-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tool-item:disabled:hover .tool-icon-wrapper {
+  transform: none;
+}
+
+.tool-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tool-icon {
+  width: 24px;
+  height: 24px;
+  color: white;
+  transition: all 0.3s ease;
+  margin-bottom: 4px;
+}
+
+.tool-item:hover:not(:disabled) .tool-icon {
+  transform: scale(1.1);
+}
+
+.tool-title {
+  font-size: 12px;
+  color: white;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+/* 管理员登录特殊样式 */
+/* .tool-item.admin-login {
+  background: rgba(64, 158, 255, 0.2);
+  border-color: rgba(64, 158, 255, 0.5);
+}
+
+.tool-item.admin-login:hover {
+  background: rgba(64, 158, 255, 0.3);
+} */
+
 
 /* 当前场景信息 */
 .scene-info {
   position: absolute;
-  bottom: 160px; /* 为底部场景列表留出空间 */
+  bottom: 260px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(255, 255, 255, 0.95);
-  padding: 16px 24px;
+  padding: 14px 22px;
   border-radius: 8px;
   text-align: center;
   z-index: 10;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(10px);
   max-width: 400px;
 }
 
@@ -909,6 +1051,13 @@ export default {
 .scene-desc {
   color: #606266;
   font-size: 14px;
+}
+
+.marker-count-info {
+  color: #606266;
+  font-size: 14px;
+  margin-top: 8px;
+  font-weight: 500;
 }
 
 /* 漫游徽章 */
@@ -936,14 +1085,14 @@ export default {
 /* 图例说明 */
 .legend {
   position: absolute;
-  bottom: 180px;
+  bottom: 160px;
   right: 20px;
   background: rgba(255, 255, 255, 0.95);
   padding: 12px;
   border-radius: 8px;
   z-index: 10;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(10px);
+  display: none;
 }
 
 .legend-item {
@@ -953,6 +1102,7 @@ export default {
   font-size: 14px;
   margin-bottom: 8px;
 }
+
 
 .legend-item:last-child {
   margin-bottom: 0;
@@ -992,77 +1142,78 @@ export default {
 /* 漫游控制按钮 */
 .roaming-controls {
   position: absolute;
-  bottom: 180px;
+  bottom: 160px;
   left: 20px;
   z-index: 10;
   display: flex;
   gap: 10px;
 }
 
+/* 场景列表切换按钮 */
+.scene-toggle-btn {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 100;
+}
+
+.scene-toggle-btn.active .tool-icon-wrapper {
+  background: rgba(64, 158, 255, 0.3);
+}
+
 /* 系统信息 */
 .system-info {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .info-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: #f5f7fa;
   border-radius: 8px;
 }
 
 .info-label {
   color: #606266;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .info-value {
   color: #2c3e50;
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 /* 底部场景列表 */
 .scene-list-container {
-  background: rgba(0, 0, 0, 0.85);
-  padding: 20px;
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.2);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 16px 20px;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
   position: absolute;
-  bottom: 0;
+  bottom: 10px;
   left: 0;
   right: 0;
   z-index: 40;
-  backdrop-filter: blur(10px);
-  max-height: 200px; /* 限制高度，避免覆盖过多图片 */
-  overflow-y: auto;
-}
-
-.scene-list-title {
-  text-align: center;
-  color: #2c3e50;
-  font-size: 20px;
-  margin: 0 0 24px 0;
-  font-weight: 500;
 }
 
 .scene-cards {
-  max-width: 1200px;
-  margin: 0 auto;
+  max-width: calc(100% - 40px);
+  margin: 0 20px;
   display: flex;
-  gap: 20px;
+  gap: 16px;
+  justify-content: center;
   overflow-x: auto;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
 
 .scene-cards::-webkit-scrollbar {
-  height: 6px;
+  height: 5px;
 }
 
 .scene-cards::-webkit-scrollbar-track {
@@ -1080,61 +1231,63 @@ export default {
 }
 
 .scene-card {
-  min-width: 280px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 2px solid transparent;
-  border-radius: 8px;
-  padding: 15px;
+  width: 140px;
+  height: 140px;
   cursor: pointer;
   transition: all 0.3s ease;
-  backdrop-filter: blur(5px);
+  border: 4px solid rgba(255, 255, 255, 1);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
 }
 
 .scene-card:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transform: translateY(-4px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255,1);
 }
 
 .scene-card.current-scene {
   border-color: #409EFF;
-  background: rgba(64, 158, 255, 0.2);
-  box-shadow: 0 0 20px rgba(64, 158, 255, 0.3);
+  box-shadow: 0 0 20px rgba(64, 158, 255, 0.5);
 }
 
-.scene-card-info {
-  margin-bottom: 10px;
-}
-
-.scene-card-name {
-  color: #fff;
-  font-size: 16px;
-  font-weight: 500;
-  margin: 0 0 5px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.scene-card-desc {
-  color: #ccc;
-  font-size: 14px;
-  margin: 0;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.scene-card-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
-.scene-card-actions {
-  display: flex;
-  justify-content: flex-end;
+.scene-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
-.marker-count {
-  font-size: 13px;
-  color: #909399;
+.scene-card-image img.loaded {
+  opacity: 1;
+}
+
+.scene-card-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
 }
 
 /* 漫游配置弹窗 */
@@ -1143,24 +1296,160 @@ export default {
 }
 
 /* AI 响应弹窗 */
-.ai-dialog >>> .el-dialog__body {
-  padding: 30px;
+.ai-response-dialog >>> .el-dialog__body {
+  padding: 20px;
+}
+
+.ai-response-content {
+  padding: 10px 0;
+}
+
+.ai-message {
+  margin: 0 0 20px 0;
+  color: #2c3e50;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.scene-marker-list {
+  margin-top: 20px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.list-title {
+  margin: 0;
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #ebeef5;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.scene-item {
+  border-bottom: 1px solid #ebeef5;
+}
+
+.scene-item:last-child {
+  border-bottom: none;
+}
+
+.scene-row {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.scene-row:hover {
+  background-color: #f5f7fa;
+}
+
+.scene-row.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.scene-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #303133;
+}
+
+.scene-name .el-icon-location {
+  color: #e6a23c;
+}
+
+.marker-count {
+  font-size: 12px;
+  color: #909399;
+}
+
+.marker-list {
+  padding: 8px 16px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background-color: #fafafa;
+}
+
+.marker-tag {
+  padding: 6px 12px;
+  background: #e3f2fd;
+  color: #1976d2;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.marker-tag:hover {
+  background: #bbdefb;
+  transform: translateY(-1px);
+}
+
+.marker-tag.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #e0e0e0;
+  color: #999;
+}
+
+.marker-tag.disabled:hover {
+  background: #e0e0e0;
+  transform: none;
 }
 
 /* 响应式设计 */
 @media (max-width: 1200px) {
-  .tools-panel {
-    width: 280px;
-    right: 10px;
+  .tools-sidebar {
+    right: 20px;
+  }
+
+  .top-ai-search {
+    width: 400px;
   }
 }
 
 @media (max-width: 768px) {
-  .tools-panel {
+  .tools-sidebar {
     position: static;
-    width: 100%;
-    height: auto;
-    margin: 10px;
+    flex-direction: row;
+    justify-content: center;
+    padding: 10px;
+    margin-bottom: 10px;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+  }
+
+  .tool-list {
+    flex-direction: row;
+    background: transparent;
+    padding: 8px;
+  }
+
+  .tool-item {
+    width: 40px;
+    height: 40px;
+  }
+
+  .tool-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .system-info {
+    position: static;
+    max-width: 100%;
+    margin: 10px auto;
   }
 
   .main-container {
@@ -1173,13 +1462,13 @@ export default {
     height: calc(100% - 200px);
   }
 
-  .scene-cards {
-    grid-template-columns: 1fr;
-    gap: 16px;
+  .top-ai-search {
+    width: calc(100% - 20px);
+    padding: 12px 16px;
   }
 
   .scene-info {
-    bottom: 140px;
+    bottom: 240px;
     left: 10px;
     right: 10px;
     transform: none;
@@ -1187,46 +1476,38 @@ export default {
   }
 
   .legend {
-    bottom: 160px;
+    bottom: 140px;
     right: 10px;
   }
 
   .roaming-controls {
-    bottom: 160px;
-    left: 10px;
-  }
-}
-
-@media (max-width: 768px) {
-  .main-container {
-    padding: 10px;
-  }
-
-  .scene-cards {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .scene-list-container {
-    padding: 20px 10px;
-  }
-
-  .scene-info {
     bottom: 140px;
     left: 10px;
-    right: 10px;
-    transform: none;
-    max-width: none;
   }
 
-  .legend {
-    bottom: 120px;
-    right: 10px;
-  }
-
-  .roaming-controls {
-    bottom: 120px;
+  .scene-toggle-btn {
+    bottom: 10px;
     left: 10px;
+  }
+
+  .scene-toggle-btn .tool-icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+
+  .scene-toggle-btn .tool-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .scene-card {
+    width: 120px;
+    height: 120px;
+  }
+
+  .scene-card-image {
+    width: 100%;
+    height: 100%;
   }
 }
 </style>

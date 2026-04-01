@@ -133,8 +133,12 @@ export const markerApi = {
 
 export const aiApi = {
   // AI 导航请求
-  navigate(input) {
-    return api.post('/ai/navigate', { input });
+  navigate(input, currentSceneId, currentSceneName) {
+    return api.post('/ai/navigate', {
+      input,
+      currentSceneId,
+      currentSceneName
+    });
   },
 
   // 获取可用场景列表

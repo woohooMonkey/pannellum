@@ -36,7 +36,7 @@ const aiController = {
    */
   async navigate(req, res) {
     try {
-      const { input } = req.body;
+      const { input, currentSceneId, currentSceneName } = req.body;
 
       if (!input || typeof input !== 'string') {
         return res.status(400).json({
@@ -57,14 +57,13 @@ const aiController = {
         });
       }
 
-      // 获取所有标记点（包含所属场景信息，排除导航类型的标记点）
-      // 导航点仅用于场景间跳转，不应作为用户目的地选项
+      // 获取所有标记点（包含所属场景信息）
+      // 标记点包括普通标记点和导航标记点，都可以作为用户目的地
       const [markers] = await db.query(
         `SELECT m.id, m.title, m.description, m.type, m.pitch, m.yaw,
                 m.panorama_id, p.name as panorama_name, p.type as panorama_type
          FROM markers m
          LEFT JOIN panoramas p ON m.panorama_id = p.id
-         WHERE m.type != 'navigation'
          ORDER BY m.title ASC`
       );
 
@@ -106,7 +105,14 @@ const aiController = {
           }).join('\n')
         : '暂无标记点';
 
+      // 当前场景信息
+      const currentPanoramaName = currentSceneName || (currentSceneId ? scenes.find(s => s.id === currentSceneId)?.name : '未知');
+
       const systemPrompt = `你是一个全景图导航助手。用户会告诉你要去的目的地，你需要根据用户意图调用相应的工具。
+
+## 当前场景信息:
+- 当前场景名称: "${currentPanoramaName || '未知'}"
+- 用户当前在这个场景中，如果用户想查看标记点，优先在当前场景内查找
 
 ## 可用的场景列表:
 ${sceneDescriptions}
@@ -116,34 +122,41 @@ ${markerDescriptions}
 
 ## 工具使用规则:
 
-### 1. 场景导航 (navigate_to_scene)
-当用户的目的地是一个"场景名称"时使用：
-- 例如: "去大厅"、"去会议室"、"去主场景"
-- 优先匹配场景名称
-- 【重要】必须同时返回 sceneId 和 sceneName 两个参数，不能只返回 sceneId
-
-### 2. 标记点导航 (navigate_to_marker)
-当用户的目的地是一个"具体位置/展品/标记点"时使用：
-- 例如: "去看前台"、"去入口处"、"去看那个雕塑"
-- 需要返回: markerId(标记点ID), markerTitle(标记点标题), sceneId(所属场景ID), sceneName(所属场景名称)
-- 【重要】所有四个参数都必须返回，不能遗漏
+### 1. 标记点导航 (navigate_to_marker) - 优先使用！
+当用户的目的地是一个具体的展品、位置或标记点时使用：
+- 例如: "玩猫"、"看猫"、"想去看看猫"、"我要找猫"
+- 首先在当前场景中查找匹配的标记点
+- 如果当前场景没有，再在其他场景中查找
+- 【重要】必须返回所有四个参数：markerId, markerTitle, sceneId, sceneName
 - 系统会自动跳转到该标记点所在的场景，并将视角对准该标记点
 
+### 2. 场景导航 (navigate_to_scene)
+当用户的目的地是一个明确的场景名称时使用：
+- 例如: "去大厅"、"去会议室"、"去主场景"
+- 当标记点匹配失败后才使用此工具
+- 【重要】必须同时返回 sceneId 和 sceneName 两个参数
+
 ### 3. 多场景漫游 (start_scene_tour)
-当用户想要"游览多个地方"、"漫游"、"多个合法的地址"时使用：
-- 例如: "带我去大厅和会议室"、"漫游所有场景"、"先去南门，再去6号楼"
-- 【重要】sceneIds 数组中的场景顺序必须严格按照用户提到的先后顺序排列
-- 用户说"先去A，再去B"，则 sceneIds 必须是 [A的ID, B的ID]，顺序绝对不能反
-- 用户说"先去A，然后去B，最后去C"，则 sceneIds 必须是 [A的ID, B的ID, C的ID]
-- 【重要】必须同时返回 sceneIds 数组和 sceneNames 数组，两者的顺序必须一致
+当用户想要游览多个地方时使用：
+- 例如: "带我去大厅和会议室"、"先去大厅，再去会议室"
+- 【重要】sceneIds 必须按用户提到的先后顺序排列
 
-### 匹配优先级:
-1. 首先尝试匹配标记点标题（更具体的位置）
-2. 其次匹配场景名称（更大的区域）
-3. 支持模糊匹配，找到最相近的目标
+### 匹配策略:
+1. **最高优先级**: 模糊匹配标记点标题
+   - "猫" 可以匹配标记点标题包含"猫"的项
+   - "玩猫" 也可以匹配标记点标题包含"猫"的项
+   - 支持同义词：猫 = 小猫 = 喵星人 = 猫咪
+2. **中等优先级**: 精确匹配场景名称
+3. **兜底策略**: 提供可选列表让用户选择
 
-### 如果找不到匹配:
-在回复中告诉用户可用的场景和标记点列表，让用户重新选择。`;
+### 如果找不到精确匹配:
+- 如果用户提到了具体物品（如"猫"），查找标题包含该词的标记点
+- 返回文本响应，告诉用户可用的场景和标记点列表，让用户重新选择
+
+### 注意事项:
+- 用户说"我想玩猫"时，应该使用 navigate_to_marker 工具，标记点标题为"猫"
+- 不要忽略用户的任何关键词，即使是不完整的描述
+- 普通标记点和导航点都可以作为目的地（navigation 类型的标记点不是用于场景间跳转的导航点，而是普通的目的地标记点）`;
 
       // 调用智谱 AI API（OpenAI 兼容）
       const response = await axios.post(
@@ -287,10 +300,10 @@ ${markerDescriptions}
  * 构建场景-标记点关联数据
  * @param {Array} scenes - 场景列表
  * @param {Array} markers - 标记点列表
- * @returns {Array} 排序后的场景数据（包含关联的普通标记点）
+ * @returns {Array} 排序后的场景数据（包含关联的所有标记点）
  */
 function buildSceneMarkerData(scenes, markers) {
-  // 为每个场景关联其普通标记点（排除导航类型的标记点）
+  // 为每个场景关联其所有标记点
   const sceneMap = new Map();
 
   scenes.forEach(scene => {
@@ -303,14 +316,15 @@ function buildSceneMarkerData(scenes, markers) {
     });
   });
 
-  // 将普通标记点关联到对应场景
+  // 将所有标记点关联到对应场景
   markers.forEach(marker => {
-    if (marker.type !== 'navigation' && marker.panorama_id) {
+    if (marker.panorama_id) {
       const scene = sceneMap.get(marker.panorama_id);
       if (scene) {
         scene.markers.push({
           id: marker.id,
           title: marker.title,
+          type: marker.type,
           pitch: marker.pitch,
           yaw: marker.yaw
         });
