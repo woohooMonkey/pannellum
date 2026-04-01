@@ -15,6 +15,12 @@ const routes = [
     meta: { title: '全景图预览' }
   },
   {
+    path: '/preview',
+    name: 'Preview',
+    component: () => import('../views/user/Preview.vue'),
+    meta: { title: '全景图预览' }
+  },
+  {
     path: '/compare',
     name: 'VersionCompare',
     component: () => import('../views/user/VersionCompare.vue'),

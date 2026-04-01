@@ -297,13 +297,11 @@ export default {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 500px;
 }
 
 #panorama-viewer {
   width: 100%;
   height: 100%;
-  min-height: 500px;
 }
 .loading-overlay {
   position: absolute;

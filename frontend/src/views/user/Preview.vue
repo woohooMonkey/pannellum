@@ -2,14 +2,78 @@
   <div class="preview-page">
     <!-- 顶部导航栏 -->
     <header class="preview-header">
-      <h1 class="logo">全景图预览</h1>
-      <nav class="header-nav">
-        <!-- AI 导航输入 -->
-        <div class="ai-nav-wrapper">
+      <h1 class="page-title">全景图预览</h1>
+    </header>
+
+    <!-- 主要内容区域 -->
+    <div class="main-container">
+      <!-- 左侧全景图区域 -->
+      <main class="preview-content">
+        <panorama-viewer
+          ref="viewer"
+          :auto-rotate="autoRotateSpeed"
+          @loaded="onPanoramaLoaded"
+        />
+
+        <!-- 当前场景信息 -->
+        <div class="scene-info" v-if="currentPanorama">
+          <div class="scene-title">
+            {{ currentPanorama.name }}
+            <span v-if="isRoaming" class="roaming-badge">漫游中</span>
+            <el-tag size="mini" v-if="currentPanorama.type === 'main'" type="danger">主图</el-tag>
+          </div>
+          <div class="scene-desc" v-if="currentPanorama.description">{{ currentPanorama.description }}</div>
+          <div class="roaming-progress" v-if="isRoaming">
+            <el-progress
+              :percentage="roamingProgress"
+              :format="roamingProgressFormat"
+              :stroke-width="6"
+            />
+          </div>
+        </div>
+
+        <!-- 漫游控制按钮 -->
+        <div class="roaming-controls" v-if="isRoaming">
+          <!-- 下一个按钮（不是最后一个场景时显示） -->
+          <el-button
+            v-if="!isLastScene"
+            type="success"
+            icon="el-icon-right"
+            @click="goToNextScene"
+          >
+            下一个
+          </el-button>
+          <!-- 停止漫游按钮 -->
+          <el-button
+            type="danger"
+            icon="el-icon-video-pause"
+            @click="stopRoaming"
+          >
+            停止漫游
+          </el-button>
+        </div>
+
+        <!-- 图例说明 -->
+        <div class="legend" v-if="!isRoaming">
+          <div class="legend-item">
+            <span class="marker-icon normal"></span>
+            <span>信息点</span>
+          </div>
+          <div class="legend-item">
+            <span class="marker-icon navigation"></span>
+            <span>导航点</span>
+          </div>
+        </div>
+      </main>
+
+      <!-- 右侧工具面板 -->
+      <aside class="tools-panel">
+        <div class="panel-section">
+          <h3 class="section-title">AI 导航</h3>
           <el-input
             v-model="aiInputText"
             placeholder="输入目的地，如：去大厅"
-            class="ai-nav-input"
+            class="ai-input"
             @keyup.enter.native="handleAiNavigate"
             :disabled="aiLoading || isRoaming"
             clearable
@@ -25,14 +89,115 @@
             </el-button>
           </el-input>
         </div>
-        <!-- 场景选择下拉框 -->
+
+        <div class="panel-section">
+          <h3 class="section-title">场景选择</h3>
+          <el-select
+            v-model="selectedSceneId"
+            placeholder="选择场景"
+            class="scene-select"
+            @change="onSceneChange"
+            :loading="sceneListLoading"
+            :disabled="isRoaming"
+          >
+            <el-option
+              v-for="scene in sortedScenes"
+              :key="scene.id"
+              :label="scene.name + (scene.type === 'main' ? ' (主图)' : '')"
+              :value="scene.id"
+            />
+          </el-select>
+        </div>
+
+        <div class="panel-section">
+          <h3 class="section-title">功能</h3>
+          <div class="function-buttons">
+            <el-button
+              type="primary"
+              icon="el-icon-video-play"
+              @click="roamingPopoverVisible = true"
+              :disabled="isRoaming"
+              class="function-btn"
+            >
+              漫游模式
+            </el-button>
+            <el-button
+              type="primary"
+              icon="el-icon-data-analysis"
+              @click="goCompare"
+              :disabled="isRoaming"
+              class="function-btn"
+            >
+              版本对比
+            </el-button>
+            <el-link
+              type="info"
+              href="/admin/login"
+              class="admin-link"
+            >管理员登录</el-link>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3 class="section-title">系统信息</h3>
+          <div class="system-info">
+            <div class="info-item">
+              <span class="info-label">场景总数：</span>
+              <span class="info-value">{{ sceneList?.length || 0 }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">当前场景：</span>
+              <span class="info-value">{{ currentPanorama?.name || '无' }}</span>
+            </div>
+            <div class="info-item" v-if="currentPanorama">
+              <span class="info-label">标记点数量：</span>
+              <span class="info-value">{{ currentPanorama.marker_count || 0 }}</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- 底部场景列表（居中显示） -->
+    <section class="scene-list-container" v-if="sceneList.length > 0">
+      <h3 class="scene-list-title">场景列表</h3>
+      <div class="scene-cards">
+        <div
+          v-for="scene in sortedScenes"
+          :key="scene.id"
+          class="scene-card"
+          :class="{ 'current-scene': isCurrentScene(scene.id) }"
+          @click="handleSceneCardClick(scene.id)"
+        >
+          <div class="scene-card-info">
+            <h4 class="scene-card-name">
+              {{ scene.name }}
+              <el-tag size="mini" v-if="scene.type === 'main'" type="danger">主</el-tag>
+            </h4>
+            <p class="scene-card-desc" v-if="scene.description">{{ scene.description }}</p>
+          </div>
+          <div class="scene-card-actions">
+            <span class="marker-count">{{ scene.marker_count || 0 }} 个标记点</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+      <!-- 漫游配置弹窗 -->
+      <el-dialog
+        title="选择漫游场景"
+        :visible.sync="roamingPopoverVisible"
+        width="400px"
+        :close-on-click-modal="true"
+        custom-class="roaming-dialog"
+      >
+        <p class="roaming-tip">请选择要漫游的场景（按顺序播放）</p>
         <el-select
-          v-model="selectedSceneId"
-          placeholder="选择场景"
-          class="scene-select"
-          @change="onSceneChange"
+          v-model="roamingSceneIds"
+          multiple
+          placeholder="请选择场景"
+          class="roaming-scene-select"
           :loading="sceneListLoading"
-          :disabled="isRoaming"
         >
           <el-option
             v-for="scene in sceneList"
@@ -41,179 +206,73 @@
             :value="scene.id"
           />
         </el-select>
-        <el-link type="info" href="/admin/login">管理员登录</el-link>
-        <!-- 版本对比按钮 -->
-        <el-button
-          type="primary"
-          size="small"
-          icon="el-icon-data-analysis"
-          @click="goCompare"
-          :disabled="isRoaming"
-        >
-          版本对比
-        </el-button>
-      </nav>
-    </header>
-
-    <!-- 全景图查看器 -->
-    <main class="preview-content">
-      <panorama-viewer
-        ref="viewer"
-        :auto-rotate="autoRotateSpeed"
-        @loaded="onPanoramaLoaded"
-      />
-    </main>
-
-    <!-- 当前场景信息 -->
-    <div class="scene-info" v-if="currentPanorama">
-      <div class="scene-title">
-        {{ currentPanorama.name }}
-        <span v-if="isRoaming" class="roaming-badge">漫游中</span>
-      </div>
-      <div class="scene-desc" v-if="currentPanorama.description">{{ currentPanorama.description }}</div>
-      <div class="roaming-progress" v-if="isRoaming">
-        <el-progress
-          :percentage="roamingProgress"
-          :format="roamingProgressFormat"
-          :stroke-width="6"
-        />
-      </div>
-    </div>
-
-    <!-- 漫游控制面板 -->
-    <div class="roaming-panel" v-if="!isRoaming">
-      <el-popover
-        placement="top"
-        width="320"
-        trigger="click"
-        v-model="roamingPopoverVisible"
-      >
-        <div class="roaming-config">
-          <h4>选择漫游场景</h4>
-          <p class="roaming-tip">请选择要漫游的场景（按顺序播放）</p>
-          <el-select
-            v-model="roamingSceneIds"
-            multiple
-            placeholder="请选择场景"
-            class="roaming-scene-select"
-            :loading="sceneListLoading"
+        <div class="roaming-dialog-footer">
+          <el-button @click="roamingPopoverVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            @click="startRoaming"
+            :disabled="roamingSceneIds.length === 0"
           >
-            <el-option
-              v-for="scene in sceneList"
-              :key="scene.id"
-              :label="scene.name + (scene.type === 'main' ? ' (主图)' : '')"
-              :value="scene.id"
-            />
-          </el-select>
-          <div class="roaming-config-footer">
-            <el-button size="small" @click="roamingPopoverVisible = false">取消</el-button>
-            <el-button
-              type="primary"
-              size="small"
-              @click="startRoaming"
-              :disabled="roamingSceneIds.length === 0"
-            >
-              开始漫游
-            </el-button>
-          </div>
+            开始漫游
+          </el-button>
         </div>
-        <el-button
-          type="primary"
-          slot="reference"
-          icon="el-icon-video-play"
-        >
-          漫游模式
-        </el-button>
-      </el-popover>
-    </div>
+      </el-dialog>
 
-    <!-- 漫游控制按钮 -->
-    <div class="roaming-controls" v-if="isRoaming">
-      <!-- 下一个按钮（不是最后一个场景时显示） -->
-      <el-button
-        v-if="!isLastScene"
-        type="success"
-        icon="el-icon-right"
-        @click="goToNextScene"
+      <!-- AI 响应弹窗 -->
+      <el-dialog
+        :visible.sync="aiResponseDialogVisible"
+        title="AI 导航提示"
+        width="480px"
+        center
+        custom-class="ai-response-dialog"
+        :close-on-click-modal="true"
       >
-        下一个
-      </el-button>
-      <!-- 停止漫游按钮 -->
-      <el-button
-        type="danger"
-        icon="el-icon-video-pause"
-        @click="stopRoaming"
-      >
-        停止漫游
-      </el-button>
-    </div>
+        <div class="ai-response-content">
+          <p class="ai-message">{{ aiResponseMessage }}</p>
 
-    <!-- 图例说明 -->
-    <div class="legend">
-      <div class="legend-item">
-        <span class="marker-icon normal"></span>
-        <span>信息点</span>
-      </div>
-      <div class="legend-item">
-        <span class="marker-icon navigation"></span>
-        <span>导航点</span>
-      </div>
-    </div>
-
-    <!-- AI 响应弹窗 -->
-    <el-dialog
-      :visible.sync="aiResponseDialogVisible"
-      title="AI 导航提示"
-      width="480px"
-      center
-      custom-class="ai-response-dialog"
-      :close-on-click-modal="true"
-    >
-      <div class="ai-response-content">
-        <p class="ai-message">{{ aiResponseMessage }}</p>
-
-        <!-- 场景-标记点层级展示 -->
-        <div class="scene-marker-list" v-if="aiSceneMarkerData.length > 0">
-          <p class="list-title">可用场景和标记点：</p>
-          <div
-            v-for="scene in aiSceneMarkerData"
-            :key="scene.id"
-            class="scene-item"
-            :class="{ 'current-scene': isCurrentScene(scene.id) }"
-          >
-            <!-- 场景行 -->
+          <!-- 场景-标记点层级展示 -->
+          <div class="scene-marker-list" v-if="aiSceneMarkerData.length > 0">
+            <p class="list-title">可用场景和标记点：</p>
             <div
-              class="scene-row"
-              :class="{ disabled: isCurrentScene(scene.id) }"
-              @click="handleSceneClick(scene)"
+              v-for="scene in aiSceneMarkerData"
+              :key="scene.id"
+              class="scene-item"
+              :class="{ 'current-scene': isCurrentScene(scene.id) }"
             >
-              <span class="scene-name">
-                <i class="el-icon-location" v-if="scene.type === 'main'"></i>
-                {{ scene.name }}
-                <el-tag size="mini" v-if="scene.type === 'main'" type="danger">主</el-tag>
-                <el-tag size="mini" v-if="isCurrentScene(scene.id)" type="info">当前</el-tag>
-              </span>
-              <span class="marker-count">{{ scene.markers.length }} 个标记点</span>
-            </div>
-            <!-- 标记点列表 -->
-            <div class="marker-list" v-if="scene.markers.length > 0">
-              <span
-                v-for="marker in scene.markers"
-                :key="marker.id"
-                class="marker-tag"
+              <!-- 场景行 -->
+              <div
+                class="scene-row"
                 :class="{ disabled: isCurrentScene(scene.id) }"
-                @click="handleMarkerClick(scene, marker)"
+                @click="handleSceneClick(scene)"
               >
-                {{ marker.title }}
-              </span>
+                <span class="scene-name">
+                  <i class="el-icon-location" v-if="scene.type === 'main'"></i>
+                  {{ scene.name }}
+                  <el-tag size="mini" v-if="scene.type === 'main'" type="danger">主</el-tag>
+                  <el-tag size="mini" v-if="isCurrentScene(scene.id)" type="info">当前</el-tag>
+                </span>
+                <span class="marker-count">{{ scene.markers.length }} 个标记点</span>
+              </div>
+              <!-- 标记点列表 -->
+              <div class="marker-list" v-if="scene.markers.length > 0">
+                <span
+                  v-for="marker in scene.markers"
+                  :key="marker.id"
+                  class="marker-tag"
+                  :class="{ disabled: isCurrentScene(scene.id) }"
+                  @click="handleMarkerClick(scene, marker)"
+                >
+                  {{ marker.title }}
+                </span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <span slot="footer" class="dialog-footer">
-        <el-button @click="aiResponseDialogVisible = false">关闭</el-button>
-      </span>
-    </el-dialog>
+        <span slot="footer" class="dialog-footer">
+          <el-button @click="aiResponseDialogVisible = false">关闭</el-button>
+        </span>
+      </el-dialog>
+    </main>
   </div>
 </template>
 
@@ -257,6 +316,16 @@ export default {
     };
   },
   computed: {
+    /**
+     * 排序后的场景列表：主图排在第一个
+     */
+    sortedScenes() {
+      if (!this.sceneList) return [];
+      const mainScene = this.sceneList.find(s => s.type === 'main');
+      const otherScenes = this.sceneList.filter(s => s.type !== 'main');
+      return mainScene ? [mainScene, ...otherScenes] : [...otherScenes];
+    },
+
     /**
      * 漫游进度百分比
      */
@@ -333,6 +402,20 @@ export default {
     onSceneChange(sceneId) {
       if (sceneId && this.$refs.viewer) {
         this.$refs.viewer.loadPanorama(sceneId);
+      }
+    },
+
+    /**
+     * 处理场景卡片点击
+     * @param {number} sceneId - 场景ID
+     */
+    handleSceneCardClick(sceneId) {
+      if (this.isCurrentScene(sceneId)) {
+        return; // 当前场景不重复加载
+      }
+      if (this.$refs.viewer) {
+        this.$refs.viewer.loadPanorama(sceneId);
+        this.$message.success(`切换到：${this.sceneList.find(s => s.id === sceneId)?.name}`);
       }
     },
 
@@ -679,110 +762,152 @@ export default {
 <style scoped>
 .preview-page {
   height: 100vh;
+  background: #f5f7fa;
   display: flex;
   flex-direction: column;
-  background: #1a1a1a;
 }
 
+/* 顶部导航栏 */
 .preview-header {
-  height: 60px;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 20px;
-  position: relative;
-  z-index: 10;
+  background: #fff;
+  padding: 10px 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  z-index: 100;
+  height: 50px;
 }
 
-.logo {
-  color: #fff;
-  font-size: 20px;
-  font-weight: 500;
+.page-title {
+  text-align: center;
+  font-size: 24px;
+  color: #2c3e50;
   margin: 0;
+  font-weight: 500;
 }
 
-.header-nav {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.scene-select {
-  width: 200px;
-}
-
-/* AI 导航输入框样式 */
-.ai-nav-wrapper {
-  display: flex;
-  align-items: center;
-}
-
-.ai-nav-input {
-  width: 320px;
-}
-
-.ai-nav-input >>> .el-input__inner {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
-}
-
-.ai-nav-input >>> .el-input__inner::placeholder {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.ai-nav-input >>> .el-input-group__append {
-  background-color: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.ai-nav-input >>> .el-input-group__append .el-button {
-  color: #fff;
-}
-
-/* 下拉框深色主题样式 */
-.scene-select >>> .el-input__inner {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
-}
-
-.scene-select >>> .el-input__inner::placeholder {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.scene-select >>> .el-select__caret {
-  color: #fff;
-}
-
-.preview-content {
-  flex: 1;
+/* 主要内容区域 */
+.main-container {
   position: relative;
+  height: 100vh; /* 使用整个视口高度 */
 }
 
+/* 左侧全景图区域 */
+.preview-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 右侧工具面板 */
+.tools-panel {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 320px;
+  max-height: calc(100vh - 120px); /* 减去顶部header和底部空间 */
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+  overflow-y: auto;
+  z-index: 50;
+  backdrop-filter: blur(10px);
+}
+
+.panel-section {
+  margin-bottom: 28px;
+}
+
+.panel-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 16px;
+  color: #2c3e50;
+  margin: 0 0 16px 0;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title::before {
+  content: '';
+  width: 3px;
+  height: 16px;
+  background: #409eff;
+  border-radius: 2px;
+}
+
+/* AI 输入框样式 */
+.ai-input {
+  margin-bottom: 0;
+}
+
+.ai-input >>> .el-input__inner {
+  height: 40px;
+}
+
+.ai-input >>> .el-input__inner::placeholder {
+  color: #c0c4cc;
+}
+
+/* 下拉框样式 */
+.scene-select {
+  width: 100%;
+}
+
+.scene-select >>> .el-input__inner {
+  height: 40px;
+}
+
+/* 功能按钮组 */
+.function-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.function-btn {
+  height: 40px;
+  font-size: 14px;
+}
+
+.admin-link {
+  font-size: 14px;
+  text-align: center;
+  display: block;
+  padding: 0;
+}
+
+/* 当前场景信息 */
 .scene-info {
   position: absolute;
-  bottom: 20px;
+  bottom: 160px; /* 为底部场景列表留出空间 */
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.7);
-  padding: 15px 25px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 16px 24px;
   border-radius: 8px;
   text-align: center;
   z-index: 10;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
   max-width: 400px;
 }
 
 .scene-title {
-  color: #fff;
+  color: #2c3e50;
   font-size: 18px;
   font-weight: 500;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 
 .scene-desc {
-  color: #ccc;
+  color: #606266;
   font-size: 14px;
 }
 
@@ -808,64 +933,25 @@ export default {
   margin-top: 10px;
 }
 
-/* 漫游控制面板 */
-.roaming-panel {
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  z-index: 10;
-}
-
-/* 漫游控制按钮组 */
-.roaming-controls {
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  z-index: 10;
-  display: flex;
-  gap: 10px;
-}
-
-/* 漫游配置弹窗 */
-.roaming-config h4 {
-  margin: 0 0 10px 0;
-  font-size: 16px;
-  color: #303133;
-}
-
-.roaming-tip {
-  margin: 0 0 15px 0;
-  font-size: 13px;
-  color: #909399;
-}
-
-.roaming-scene-select {
-  width: 100%;
-  margin-bottom: 15px;
-}
-
-.roaming-config-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
+/* 图例说明 */
 .legend {
   position: absolute;
-  bottom: 20px;
+  bottom: 180px;
   right: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 15px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 12px;
   border-radius: 8px;
   z-index: 10;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  color: #fff;
+  color: #2c3e50;
   font-size: 14px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .legend-item:last-child {
@@ -903,9 +989,197 @@ export default {
   border-bottom: 8px solid #fff;
 }
 
-/* 移动端适配 */
+/* 漫游控制按钮 */
+.roaming-controls {
+  position: absolute;
+  bottom: 180px;
+  left: 20px;
+  z-index: 10;
+  display: flex;
+  gap: 10px;
+}
+
+/* 系统信息 */
+.system-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.info-label {
+  color: #606266;
+  font-size: 14px;
+}
+
+.info-value {
+  color: #2c3e50;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+/* 底部场景列表 */
+.scene-list-container {
+  background: rgba(0, 0, 0, 0.85);
+  padding: 20px;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  backdrop-filter: blur(10px);
+  max-height: 200px; /* 限制高度，避免覆盖过多图片 */
+  overflow-y: auto;
+}
+
+.scene-list-title {
+  text-align: center;
+  color: #2c3e50;
+  font-size: 20px;
+  margin: 0 0 24px 0;
+  font-weight: 500;
+}
+
+.scene-cards {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.scene-cards::-webkit-scrollbar {
+  height: 6px;
+}
+
+.scene-cards::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.scene-cards::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.scene-cards::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.scene-card {
+  min-width: 280px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
+}
+
+.scene-card:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.scene-card.current-scene {
+  border-color: #409EFF;
+  background: rgba(64, 158, 255, 0.2);
+  box-shadow: 0 0 20px rgba(64, 158, 255, 0.3);
+}
+
+.scene-card-info {
+  margin-bottom: 10px;
+}
+
+.scene-card-name {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0 0 5px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scene-card-desc {
+  color: #ccc;
+  font-size: 14px;
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.scene-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.marker-count {
+  font-size: 13px;
+  color: #909399;
+}
+
+/* 漫游配置弹窗 */
+.roaming-dialog >>> .el-dialog__body {
+  padding: 20px;
+}
+
+/* AI 响应弹窗 */
+.ai-dialog >>> .el-dialog__body {
+  padding: 30px;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .tools-panel {
+    width: 280px;
+    right: 10px;
+  }
+}
+
 @media (max-width: 768px) {
+  .tools-panel {
+    position: static;
+    width: 100%;
+    height: auto;
+    margin: 10px;
+  }
+
+  .main-container {
+    height: calc(100vh - 60px);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .preview-content {
+    height: calc(100% - 200px);
+  }
+
+  .scene-cards {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
   .scene-info {
+    bottom: 140px;
     left: 10px;
     right: 10px;
     transform: none;
@@ -913,118 +1187,46 @@ export default {
   }
 
   .legend {
+    bottom: 160px;
     right: 10px;
-    bottom: 100px;
+  }
+
+  .roaming-controls {
+    bottom: 160px;
+    left: 10px;
   }
 }
 
-/* AI 响应弹窗样式 */
-.ai-response-content {
-  text-align: center;
-}
+@media (max-width: 768px) {
+  .main-container {
+    padding: 10px;
+  }
 
-.ai-message {
-  color: #606266;
-  font-size: 14px;
-  line-height: 1.6;
-  margin-bottom: 20px;
-  white-space: pre-wrap;
-}
+  .scene-cards {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 
-/* 场景-标记点列表样式 */
-.scene-marker-list {
-  text-align: left;
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 10px;
-  background: #f5f7fa;
-  border-radius: 8px;
-}
+  .scene-list-container {
+    padding: 20px 10px;
+  }
 
-.list-title {
-  color: #909399;
-  font-size: 13px;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e4e7ed;
-}
+  .scene-info {
+    bottom: 140px;
+    left: 10px;
+    right: 10px;
+    transform: none;
+    max-width: none;
+  }
 
-.scene-item {
-  margin-bottom: 12px;
-  padding: 10px;
-  background: #fff;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
+  .legend {
+    bottom: 120px;
+    right: 10px;
+  }
 
-.scene-item.current-scene {
-  opacity: 0.7;
-}
-
-.scene-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.scene-row:hover:not(.disabled) {
-  background-color: #ecf5ff;
-}
-
-.scene-row.disabled {
-  cursor: default;
-  color: #909399;
-}
-
-.scene-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.scene-name i {
-  color: #f56c6c;
-}
-
-.marker-count {
-  font-size: 12px;
-  color: #909399;
-}
-
-.marker-list {
-  margin-top: 8px;
-  padding-left: 20px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.marker-tag {
-  display: inline-block;
-  padding: 4px 10px;
-  font-size: 12px;
-  color: #409eff;
-  background: #ecf5ff;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.marker-tag:hover:not(.disabled) {
-  background: #409eff;
-  color: #fff;
-}
-
-.marker-tag.disabled {
-  color: #c0c4cc;
-  background: #f4f4f5;
-  cursor: default;
+  .roaming-controls {
+    bottom: 120px;
+    left: 10px;
+  }
 }
 </style>
