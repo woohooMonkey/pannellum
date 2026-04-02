@@ -13,7 +13,7 @@ const BACKEND_DIR = path.join(__dirname, '..', 'backend', 'generated');
 
 /**
  * 读取所有 JSON 配置文件
- * @returns {Array} 所有配置项的合并数组
+ * @returns {Array} 所有配置项的合并数组（已去重）
  */
 function loadConfigs() {
   const configs = [];
@@ -31,7 +31,19 @@ function loadConfigs() {
     }
   }
 
-  return configs;
+  // 去重：根据 name 属性去重
+  const uniqueConfigs = [];
+  const seenNames = new Set();
+
+  for (const config of configs) {
+    if (!seenNames.has(config.name)) {
+      seenNames.add(config.name);
+      uniqueConfigs.push(config);
+    }
+  }
+
+  console.log(`原始配置: ${configs.length} 个，去重后: ${uniqueConfigs.length} 个`);
+  return uniqueConfigs;
 }
 
 /**
@@ -55,7 +67,7 @@ function generateActionMap(configs) {
 
 export const actionMap = {
 ${actionMapEntries.join(',\n')}
-;
+};
 
 export default actionMap;
 `;
@@ -98,7 +110,7 @@ function generateActionCommand(configs) {
     const validationBlock = validationLines.length > 0 ? validationLines.join('\n') + '\n' : '';
 
 
-    const paramBlock = paramExtraction.length > 0 ? paramExtraction.join(',\n') + '';
+    const paramBlock = paramExtraction.length > 0 ? paramExtraction.join(',\n') : '';
 
     return `  '${config.name}': async (params) => {
 ${validationBlock}
@@ -128,7 +140,7 @@ ${commands.join(',\n')}
  */
 export async function executeAction(actionName, params = {}) {
   if (!actionCommand[actionName]) {
-    throw new Error(\`未知的动作: ${actionName}\`);
+    throw new Error('未知的动作: ' + actionName);
   }
   return await actionCommand[actionName](params);
 }
@@ -227,7 +239,7 @@ ${handlers.join('\n')}
     default:
       return {
         success: false,
-        error: \`未知的工具: ${toolName}\`
+        error: '未知的工具: ' + toolName
       };
   }
 }

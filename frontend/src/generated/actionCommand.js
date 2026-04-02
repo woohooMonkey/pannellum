@@ -1,106 +1,45 @@
 /**
- * 前端动作命令 - 自动生成，请勿手动修改
- * 生成时间: 2026-03-23T06:18:28.822Z
+ * 半端动作命令 - 自动生成，请勿手动修改
+ * 生成时间: 2026-04-02T01:38:52.150Z
  */
 
 export const actionCommand = {
-  /**
-   * 移动对象
-   * @param {Object} params - 参数
-   * @param {number} params.color - 移动的数值，如100
-   */
-  'move': async (params) => {
-    if (!params.value) { throw new Error('参数 value 是必需的'); }
-
-    return {
-      action: 'move',
-      params: {
-      color: params.color
-      }
-    };
-  },
-  /**
-   * 修改对象的宽度或者高度
-   * @param {Object} params - 参数
-   * @param {number} params.width - 宽度
-   * @param {umbe} params.height - 高度
-   */
-  'resize': async (params) => {
-    if (!params.message) { throw new Error('参数 message 是必需的'); }
-
-    return {
-      action: 'resize',
-      params: {
-      width: params.width,
-      height: params.height
-      }
-    };
-  },
-  /**
-   * 跳转到指定的全景图场景
-   * @param {Object} params - 参数
-   * @param {number} params.sceneId - 目标场景的ID
-   * @param {string} params.sceneName - 目标场景的名称
-   */
   'navigate_to_scene': async (params) => {
-    if (!params.sceneId) { throw new Error('参数 sceneId 是必需的'); }
+    if (!params.sceneId) { throw new Error(`参数 sceneId 是必需的`); }
+    if (!params.sceneName) { throw new Error(`参数 sceneName 是必需的`); }
 
     return {
       action: 'navigate_to_scene',
       params: {
-      sceneId: params.sceneId,
-      sceneName: params.sceneName
+        sceneId: params.sceneId,
+        sceneName: params.sceneName
       }
     };
   },
-  /**
-   * 开始场景漫游，按照指定顺序依次游览多个场景
-   * @param {Object} params - 参数
-   * @param {array} params.sceneIds - 漫游场景ID列表，按顺序排列
-   * @param {array} params.sceneNames - 漫游场景名称列表
-   */
+  'navigate_to_marker': async (params) => {
+    if (!params.markerId) { throw new Error(`参数 markerId 是必需的`); }
+    if (!params.sceneId) { throw new Error(`参数 sceneId 是必需的`); }
+    if (!params.markerTitle) { throw new Error(`参数 markerTitle 是必需的`); }
+    if (!params.sceneName) { throw new Error(`参数 sceneName 是必需的`); }
+
+    return {
+      action: 'navigate_to_marker',
+      params: {
+        markerId: params.markerId,
+        markerTitle: params.markerTitle,
+        sceneId: params.sceneId,
+        sceneName: params.sceneName
+      }
+    };
+  },
   'start_scene_tour': async (params) => {
-    if (!params.sceneIds) { throw new Error('参数 sceneIds 是必需的'); }
+    if (!params.sceneIds) { throw new Error(`参数 sceneIds 是必需的`); }
 
     return {
       action: 'start_scene_tour',
       params: {
-      sceneIds: params.sceneIds,
-      sceneNames: params.sceneNames
-      }
-    };
-  },
-  /**
-   * 跳转到指定的全景图场景
-   * @param {Object} params - 参数
-   * @param {number} params.sceneId - 目标场景的ID
-   * @param {string} params.sceneName - 目标场景的名称
-   */
-  'navigate_to_scene': async (params) => {
-    if (!params.sceneId) { throw new Error('参数 sceneId 是必需的'); }
-
-    return {
-      action: 'navigate_to_scene',
-      params: {
-      sceneId: params.sceneId,
-      sceneName: params.sceneName
-      }
-    };
-  },
-  /**
-   * 开始场景漫游，按照指定顺序依次游览多个场景
-   * @param {Object} params - 参数
-   * @param {array} params.sceneIds - 漫游场景ID列表，按顺序排列
-   * @param {array} params.sceneNames - 漫游场景名称列表
-   */
-  'start_scene_tour': async (params) => {
-    if (!params.sceneIds) { throw new Error('参数 sceneIds 是必需的'); }
-
-    return {
-      action: 'start_scene_tour',
-      params: {
-      sceneIds: params.sceneIds,
-      sceneNames: params.sceneNames
+        sceneIds: params.sceneIds,
+        sceneNames: params.sceneNames
       }
     };
   }
@@ -114,7 +53,7 @@ export const actionCommand = {
  */
 export async function executeAction(actionName, params = {}) {
   if (!actionCommand[actionName]) {
-    throw new Error(`未知的动作: ${actionName}`);
+    throw new Error('未知的动作: ' + actionName);
   }
   return await actionCommand[actionName](params);
 }
