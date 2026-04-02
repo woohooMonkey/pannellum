@@ -57,13 +57,15 @@ const aiController = {
         });
       }
 
-      // 获取所有标记点（包含所属场景信息）
+      // 获取所有标记点（包含所属场景信息和导航点指向的场景信息）
       // 标记点包括普通标记点和导航标记点，都可以作为用户目的地
       const [markers] = await db.query(
         `SELECT m.id, m.title, m.description, m.type, m.pitch, m.yaw,
-                m.panorama_id, p.name as panorama_name, p.type as panorama_type
+                m.panorama_id, p.name as panorama_name, p.type as panorama_type,
+                tp.id as target_panorama_id, tp.name as target_panorama_name
          FROM markers m
          LEFT JOIN panoramas p ON m.panorama_id = p.id
+         LEFT JOIN panoramas tp ON m.target_panorama_id = tp.id
          ORDER BY m.title ASC`
       );
 
@@ -91,17 +93,28 @@ const aiController = {
         }
       }));
 
-      // 构建场景信息
+      // 构建场景信息 - 使用清晰的格式，便于 AI 识别
       const sceneDescriptions = scenes.map(s => {
-        const type = s.type === 'main' ? '主场景' : '子场景';
-        return `- ID: ${s.id}, 名称: "${s.name}", 类型: ${type}${s.description ? `, 描述: ${s.description}` : ''}`;
+        const type = s.type === 'main' ? '【主场景】' : '【子场景】';
+        return `[场景] ID:${s.id} 完整名称:"${s.name}" ${type}${s.description ? ` 描述:${s.description}` : ''}`;
       }).join('\n');
 
-      // 构建标记点信息
+      // 构建标记点信息 - 使用不同的格式，与场景区分
       const markerDescriptions = markers.length > 0
         ? markers.map(m => {
-            const markerType = m.type === 'navigation' ? '导航点' : '信息点';
-            return `- ID: ${m.id}, 标题: "${m.title}", 类型: ${markerType}, 所属场景: "${m.panorama_name}"${m.description ? `, 描述: ${m.description}` : ''}`;
+            const markerType = m.type === 'navigation' ? '【导航点】' : '【信息点】';
+            let description = `[标记] ID:${m.id} 标题:"${m.title}" ${markerType} 所属场景:"${m.panorama_name}"`;
+
+            // 如果是导航点，添加目标场景信息
+            if (m.type === 'navigation' && m.target_panorama_name) {
+              description += ` → 目标场景:"${m.target_panorama_name}"`;
+            }
+
+            if (m.description) {
+              description += ` 描述:${m.description}`;
+            }
+
+            return description;
           }).join('\n')
         : '暂无标记点';
 
@@ -112,7 +125,6 @@ const aiController = {
 
 ## 当前场景信息:
 - 当前场景名称: "${currentPanoramaName || '未知'}"
-- 用户当前在这个场景中，如果用户想查看标记点，优先在当前场景内查找
 
 ## 可用的场景列表:
 ${sceneDescriptions}
@@ -120,6 +132,24 @@ ${sceneDescriptions}
 ## 可用的标记点列表:
 ${markerDescriptions}
 
+## 工具调用规则:
+1:**目的地识别** 再进行语义理解识别用户的输入目的地，找到数据库中所有相近的场景或者标记点。
+1. **场景匹配**：识别到目的地是场景的时候，使用 navigate_to_scene 工具
+   - 例如："去6号楼"（如果6号楼是场景名称）
+   - 例如："去大厅"（如果大厅是场景名称）
+2. **标记点匹配**：识别到目的是标记点时候：
+   - 如果是普通标记点（如"品牌馆"、"展品A"），使用 navigate_to_marker 工具直接跳转到该标记点
+   - 如果是导航点（如"南门"、"出口"），使用 navigate_to_scene 工具跳转到该导航点指向的目标场景
+   
+## 重要判断逻辑:
+- 进行语义理解，判断目的地
+- 如果匹配到场景，使用 navigate_to_scene
+- 如果匹配到普通标记点，使用 navigate_to_marker
+- 如果匹配到导航点，使用 navigate_to_scene 跳转到其目标场景
+
+
+
+请严格按照以上逻辑进行判断和工具调用。
 `;
 
       // 调用智谱 AI API（OpenAI 兼容）
@@ -285,13 +315,23 @@ function buildSceneMarkerData(scenes, markers) {
     if (marker.panorama_id) {
       const scene = sceneMap.get(marker.panorama_id);
       if (scene) {
-        scene.markers.push({
+        const markerInfo = {
           id: marker.id,
           title: marker.title,
           type: marker.type,
           pitch: marker.pitch,
           yaw: marker.yaw
-        });
+        };
+
+        // 如果是导航点，添加目标场景信息
+        if (marker.type === 'navigation' && marker.target_panorama_id && marker.target_panorama_name) {
+          markerInfo.targetScene = {
+            id: marker.target_panorama_id,
+            name: marker.target_panorama_name
+          };
+        }
+
+        scene.markers.push(markerInfo);
       }
     }
   });
