@@ -11,10 +11,10 @@
         />
 
         <!-- 顶部AI导航搜索区域 -->
-        <div class="top-ai-search" v-if="!isRoaming && !isNavigating">
+        <div class="top-ai-search" v-if="showAiSearch && !isRoaming && !isNavigating">
           <el-input
             v-model="aiInputText"
-            placeholder="输入目的地，如：去大厅"
+            placeholder="输入目的地，如：去办公室"
             class="ai-search-input"
             @keyup.enter.native="handleAiNavigate"
             :disabled="aiLoading"
@@ -25,9 +25,8 @@
               icon="el-icon-position"
               @click="handleAiNavigate"
               :loading="aiLoading"
-              :disabled="!aiInputText.trim()"
             >
-              {{ aiLoading ? '处理中' : '导航' }}
+              {{ aiLoading ? '处理中' : '智能导航' }}
             </el-button>
           </el-input>
         </div>
@@ -166,6 +165,14 @@
               </svg>
             </div>
             <div class="tool-title">详情</div>
+          </div>
+
+          <!-- 智能导航按钮 -->
+          <div class="tool-item" @click="toggleAiSearch" :class="{ 'active': showAiSearch }">
+            <div class="tool-icon-wrapper">
+              <i class="el-icon-position tool-icon-el"></i>
+            </div>
+            <div class="tool-title">智能导航</div>
           </div>
         </div>
 
@@ -336,13 +343,15 @@ export default {
       showSceneList: false,          // 是否显示场景列表
       isFullscreen: false,          // 是否全屏
       showSceneInfo: true,          // 是否显示场景信息
+      showAiSearch: true,           // 是否显示AI导航搜索框
 
       // 路线动画导航相关
       isNavigating: false,           // 是否正在路线导航中
       _navigationCancelled: false,   // 导航取消标志
       navCurrentStep: 0,            // 当前导航步骤
       navTotalSteps: 0,             // 导航总步骤
-      _delayTimer: null             // 延时定时器
+      _delayTimer: null,            // 延时定时器
+      _delayResolve: null           // 延时Promise的resolve函数
     };
   },
   computed: {
@@ -361,7 +370,7 @@ export default {
      */
     roamingProgress() {
       if (this.roamingSceneIds.length === 0) return 0;
-      return Math.round((this.currentRoamingIndex / this.roamingSceneIds.length) * 100);
+      return Math.round(((this.currentRoamingIndex + 1) / this.roamingSceneIds.length) * 100);
     },
     /**
      * 是否是最后一个场景
@@ -574,7 +583,7 @@ export default {
      * 漫游进度格式化
      */
     roamingProgressFormat(percentage) {
-      return `${this.currentRoamingIndex}/${this.roamingSceneIds.length}`;
+      return `${this.currentRoamingIndex + 1}/${this.roamingSceneIds.length}`;
     },
 
     // ==================== AI 导航相关方法 ====================
@@ -776,24 +785,30 @@ export default {
 
         this.navCurrentStep = i + 1;
         const wp = route[i];
+        const isLastWaypoint = i === route.length - 1;
 
         if (wp.type === 'navigation') {
-          // 1. 相机转向导航点
-          await this.$refs.viewer.lookAt(wp.pitch, wp.yaw, 800);
+          // 1. 相机转向导航点 (1.5s)
+          await this.$refs.viewer.lookAt(wp.pitch, wp.yaw, 1500);
           if (this._navigationCancelled) break;
 
           // 2. 停顿让用户看清导航点
           await this.delay(1000);
           if (this._navigationCancelled) break;
 
-          // 3. 缩放至导航点（模拟走近效果）
-          await this.$refs.viewer.zoomTo(30, 800);
+          // 3. 缩放至导航点 (1.5s)
+          await this.$refs.viewer.zoomTo(30, 1500);
           if (this._navigationCancelled) break;
 
           // 4. 停顿后准备进入下一场景
           await this.delay(1000);
 
         } else if (wp.type === 'scene') {
+          // 如果是最终目的地场景，启用自动旋转
+          if (isLastWaypoint) {
+            this.autoRotateSpeed = -this.ROTATION_SPEED;
+          }
+
           // 加载目标场景（等待完全加载）
           await this.$refs.viewer.loadPanoramaAsync(wp.sceneId);
           if (this._navigationCancelled) break;
@@ -802,8 +817,16 @@ export default {
           await this.delay(1500);
 
         } else if (wp.type === 'marker') {
-          // 相机转向最终标记点
-          await this.$refs.viewer.lookAt(wp.pitch, wp.yaw, 800);
+          // 1. 相机转向标记点 (1.5s)
+          await this.$refs.viewer.lookAt(wp.pitch, wp.yaw, 1500);
+          if (this._navigationCancelled) break;
+
+          // 2. 停顿
+          await this.delay(1000);
+          if (this._navigationCancelled) break;
+
+          // 3. 缩放至标记点 (1.5s)
+          await this.$refs.viewer.zoomTo(30, 1500);
         }
       }
 
@@ -821,6 +844,11 @@ export default {
         clearTimeout(this._delayTimer);
         this._delayTimer = null;
       }
+      if (this._delayResolve) {
+        this._delayResolve();
+        this._delayResolve = null;
+      }
+      this.autoRotateSpeed = false;
       this.isNavigating = false;
       this.navCurrentStep = 0;
       this.navTotalSteps = 0;
@@ -833,7 +861,12 @@ export default {
      */
     delay(ms) {
       return new Promise(resolve => {
-        this._delayTimer = setTimeout(resolve, ms);
+        this._delayResolve = resolve;
+        this._delayTimer = setTimeout(() => {
+          this._delayResolve = null;
+          this._delayTimer = null;
+          resolve();
+        }, ms);
       });
     },
 
@@ -972,7 +1005,7 @@ export default {
      * 跳转到管理员登录页面
      */
     goToAdmin() {
-      window.location.href = '/admin/login';
+      window.open('/admin/login', '_blank');
     },
 
     /**
@@ -987,6 +1020,13 @@ export default {
      */
     toggleSceneList() {
       this.showSceneList = !this.showSceneList;
+    },
+
+    /**
+     * 切换AI导航搜索框显示
+     */
+    toggleAiSearch() {
+      this.showAiSearch = !this.showAiSearch;
     }
   }
 };
@@ -1162,6 +1202,11 @@ export default {
   color: white;
   font-weight: 500;
   line-height: 1.2;
+}
+
+.tool-icon-el {
+  font-size: 22px;
+  color: white;
 }
 
 /* 管理员登录特殊样式 */

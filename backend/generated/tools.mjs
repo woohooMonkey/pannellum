@@ -81,36 +81,6 @@ export const tools = [
         "sceneIds"
       ]
     }
-  },
-  {
-    "name": "text_response",
-    "description": "当无法匹配到具体操作时，返回文本响应给用户，提供可用场景和标记点列表。",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "message": {
-          "type": "string",
-          "description": "返回给用户的文本消息"
-        },
-        "availableScenes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "可用场景列表"
-        },
-        "availableMarkers": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "可用标记点列表"
-        }
-      },
-      "required": [
-        "message"
-      ]
-    }
   }
 ];
 
