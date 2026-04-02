@@ -141,6 +141,15 @@ export const aiApi = {
     });
   },
 
+  // 获取导航路线
+  getRoute(fromSceneId, toSceneId, markerId = null) {
+    return api.post('/ai/route', {
+      fromSceneId,
+      toSceneId,
+      markerId
+    });
+  },
+
   // 获取可用场景列表
   getScenes() {
     return api.get('/ai/scenes');

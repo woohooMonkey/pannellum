@@ -72,7 +72,9 @@ export default {
       markerInfo: {
         title: '',
         description: ''
-      }
+      },
+      _pendingLoadResolve: null,
+      _pendingLoadReject: null
     };
   },
   computed: {
@@ -205,8 +207,17 @@ export default {
 
       this.viewer = window.pannellum.viewer('panorama-viewer', config);
 
-      // 触发加载完成事件
-      this.$emit('loaded', this.panorama)
+      // 触发加载完成事件（UI更新用）
+      this.$emit('loaded', this.panorama);
+
+      // 全景图完全加载后resolve异步Promise
+      this.viewer.on('load', () => {
+        if (this._pendingLoadResolve) {
+          this._pendingLoadResolve(this.panorama);
+          this._pendingLoadResolve = null;
+          this._pendingLoadReject = null;
+        }
+      });
     },
 
     /**
@@ -286,6 +297,104 @@ export default {
           });
         };
         this.viewer.on('mousedown', handler);
+      });
+    },
+
+    /**
+     * 平滑转向目标坐标
+     * @param {number} pitch - 目标俯仰角
+     * @param {number} yaw - 目标偏航角
+     * @param {number} duration - 动画时长(ms)
+     */
+    lookAt(pitch, yaw, duration = 800) {
+      return new Promise((resolve) => {
+        if (!this.viewer) { resolve(); return; }
+
+        const startPitch = this.viewer.getPitch();
+        const startYaw = this.viewer.getYaw();
+        const startTime = performance.now();
+
+        // 处理偏航角环绕（取最短路径）
+        let deltaYaw = yaw - startYaw;
+        if (deltaYaw > 180) deltaYaw -= 360;
+        if (deltaYaw < -180) deltaYaw += 360;
+
+        const animateStep = () => {
+          if (!this.viewer) { resolve(); return; }
+
+          const elapsed = performance.now() - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          // EaseInOut 缓动函数
+          const ease = progress < 0.5
+            ? 2 * progress * progress
+            : -1 + (4 - 2 * progress) * progress;
+
+          this.viewer.setPitch(startPitch + (pitch - startPitch) * ease, false);
+          this.viewer.setYaw(startYaw + deltaYaw * ease, false);
+
+          if (progress < 1) {
+            requestAnimationFrame(animateStep);
+          } else {
+            resolve();
+          }
+        };
+
+        requestAnimationFrame(animateStep);
+      });
+    },
+
+    /**
+     * 平滑缩放到指定水平视角
+     * @param {number} hfov - 目标水平视角（值越小越放大）
+     * @param {number} duration - 动画时长(ms)
+     */
+    zoomTo(hfov, duration = 800) {
+      return new Promise((resolve) => {
+        if (!this.viewer) { resolve(); return; }
+
+        const startHfov = this.viewer.getHfov();
+        const startTime = performance.now();
+
+        const animateStep = () => {
+          if (!this.viewer) { resolve(); return; }
+
+          const elapsed = performance.now() - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const ease = progress < 0.5
+            ? 2 * progress * progress
+            : -1 + (4 - 2 * progress) * progress;
+
+          this.viewer.setHfov(startHfov + (hfov - startHfov) * ease, false);
+
+          if (progress < 1) {
+            requestAnimationFrame(animateStep);
+          } else {
+            resolve();
+          }
+        };
+
+        requestAnimationFrame(animateStep);
+      });
+    },
+
+    /**
+     * 重置水平视角到默认值
+     * @param {number} duration - 动画时长(ms)
+     */
+    resetHfov(duration = 600) {
+      return this.zoomTo(75, duration);
+    },
+
+    /**
+     * 异步加载全景图（等待Pannellum完全加载完成后resolve）
+     * @param {number} id - 全景图 ID
+     * @param {Object} lookAt - 可选，加载后指向的坐标 { pitch, yaw }
+     */
+    loadPanoramaAsync(id, lookAt = null) {
+      return new Promise((resolve, reject) => {
+        this._pendingLoadResolve = resolve;
+        this._pendingLoadReject = reject;
+        this.loadPanorama(id, lookAt);
       });
     }
   }

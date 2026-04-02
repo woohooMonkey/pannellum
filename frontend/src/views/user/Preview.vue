@@ -11,7 +11,7 @@
         />
 
         <!-- 顶部AI导航搜索区域 -->
-        <div class="top-ai-search" v-if="!isRoaming">
+        <div class="top-ai-search" v-if="!isRoaming && !isNavigating">
           <el-input
             v-model="aiInputText"
             placeholder="输入目的地，如：去大厅"
@@ -30,6 +30,17 @@
               {{ aiLoading ? '处理中' : '导航' }}
             </el-button>
           </el-input>
+        </div>
+
+        <!-- 导航进度条 -->
+        <div class="navigation-progress" v-if="isNavigating">
+          <div class="nav-progress-info">
+            <span class="nav-step-text">导航中 {{ navProgressText }}</span>
+            <el-button type="text" size="mini" @click="cancelNavigation" class="nav-cancel-btn">
+              取消
+            </el-button>
+          </div>
+          <el-progress :percentage="navProgress" :stroke-width="4" :show-text="false" color="#409EFF" />
         </div>
 
         <!-- 当前场景信息 -->
@@ -324,7 +335,14 @@ export default {
       ROTATION_SPEED: 10,           // 旋转速度（度/秒）
       showSceneList: false,          // 是否显示场景列表
       isFullscreen: false,          // 是否全屏
-      showSceneInfo: true          // 是否显示场景信息
+      showSceneInfo: true,          // 是否显示场景信息
+
+      // 路线动画导航相关
+      isNavigating: false,           // 是否正在路线导航中
+      _navigationCancelled: false,   // 导航取消标志
+      navCurrentStep: 0,            // 当前导航步骤
+      navTotalSteps: 0,             // 导航总步骤
+      _delayTimer: null             // 延时定时器
     };
   },
   computed: {
@@ -357,6 +375,21 @@ export default {
     rotationDuration() {
       // 360度 / 旋转速度(度/秒) = 秒数，再转换为毫秒
       return (this.ROTATION_DEGREES / this.ROTATION_SPEED) * 1000;
+    },
+
+    /**
+     * 路线导航进度百分比
+     */
+    navProgress() {
+      if (this.navTotalSteps === 0) return 0;
+      return Math.round((this.navCurrentStep / this.navTotalSteps) * 100);
+    },
+
+    /**
+     * 路线导航进度文本
+     */
+    navProgressText() {
+      return `${this.navCurrentStep}/${this.navTotalSteps}`;
     }
   },
   created() {
@@ -372,6 +405,11 @@ export default {
   beforeDestroy() {
     // 组件销毁时清理定时器
     this.clearRotationTimer();
+    if (this._delayTimer) {
+      clearTimeout(this._delayTimer);
+    }
+    // 取消正在进行的导航
+    this._navigationCancelled = true;
     // 清理注册的工具
     SafeExecutor.clear();
   },
@@ -618,15 +656,15 @@ export default {
           return;
         }
 
+        // 清空输入（在动画开始前清空，避免长时间等待）
+        this.aiInputText = '';
+
         // 使用 SafeExecutor 安全执行工具
         const result = await SafeExecutor.executeAsync(action, params);
 
         if (!result.success) {
           console.error(`[Preview] 工具执行失败:`, result.error);
           this.$message.error(`操作执行失败: ${result.error}`);
-        } else {
-          // 清空输入
-          this.aiInputText = '';
         }
       } catch (error) {
         console.error('AI 导航请求失败:', error);
@@ -637,20 +675,41 @@ export default {
     },
 
     /**
-     * 导航到指定场景
+     * 导航到指定场景（带路线动画）
      * @param {number} sceneId - 场景 ID
      * @param {string} sceneName - 场景名称
      */
-    navigateToScene(sceneId, sceneName) {
-      if (this.$refs.viewer) {
+    async navigateToScene(sceneId, sceneName) {
+      if (!this.$refs.viewer) return;
+
+      const currentSceneId = this.currentPanorama?.id;
+
+      // 已在目标场景
+      if (currentSceneId === sceneId) {
+        this.$message.info('您已在目标场景中');
+        return;
+      }
+
+      try {
+        const res = await aiApi.getRoute(currentSceneId, sceneId);
+
+        if (res.success && res.data.route && res.data.route.length > 0) {
+          this.$message.success(`正在导航到：${sceneName}`);
+          await this.executeRoute(res.data.route);
+        } else {
+          // 无路径，直接跳转
+          this.$refs.viewer.loadPanorama(sceneId);
+          this.$message.success(`正在导航到：${sceneName}`);
+        }
+      } catch (error) {
+        console.error('路线计算失败，直接跳转:', error);
         this.$refs.viewer.loadPanorama(sceneId);
         this.$message.success(`正在导航到：${sceneName}`);
-        this.aiInputText = '';
       }
     },
 
     /**
-     * 导航到指定标记点
+     * 导航到指定标记点（带路线动画）
      * @param {number} markerId - 标记点 ID
      * @param {string} markerTitle - 标记点标题
      * @param {number} sceneId - 场景 ID
@@ -659,33 +718,123 @@ export default {
     async navigateToMarker(markerId, markerTitle, sceneId, sceneName) {
       if (!this.$refs.viewer) return;
 
-      try {
-        // 获取标记点详情以获取 pitch 和 yaw
-        const { markerApi } = await import('@/api');
-        const res = await markerApi.getById(markerId);
+      const currentSceneId = this.currentPanorama?.id;
 
-        if (res.success && res.data) {
-          const marker = res.data;
-          // 加载场景并指向标记点位置
-          this.$refs.viewer.loadPanorama(sceneId, {
-            pitch: marker.pitch,
-            yaw: marker.yaw
-          });
-          this.$message.success(`正在导航到：${markerTitle}（位于${sceneName}）`);
-          this.aiInputText = '';
+      try {
+        const res = await aiApi.getRoute(currentSceneId, sceneId, markerId);
+
+        if (res.success && res.data.route && res.data.route.length > 0) {
+          this.$message.success(`正在导航到：${markerTitle}（${sceneName}）`);
+          await this.executeRoute(res.data.route);
+        } else if (res.success && res.data.sameScene) {
+          // 同场景内，路线中只包含标记点
+          if (res.data.route.length > 0) {
+            await this.executeRoute(res.data.route);
+            this.$message.success(`已指向：${markerTitle}`);
+          }
         } else {
-          // 如果获取标记点失败，仍然跳转到场景
-          this.$refs.viewer.loadPanorama(sceneId);
-          this.$message.success(`正在导航到：${sceneName}`);
-          this.aiInputText = '';
+          // 无路径，直接跳转并指向标记点
+          const { markerApi } = await import('@/api');
+          const markerRes = await markerApi.getById(markerId);
+          if (markerRes.success && markerRes.data) {
+            this.$refs.viewer.loadPanorama(sceneId, {
+              pitch: markerRes.data.pitch,
+              yaw: markerRes.data.yaw
+            });
+          } else {
+            this.$refs.viewer.loadPanorama(sceneId);
+          }
+          this.$message.success(`正在导航到：${markerTitle}（${sceneName}）`);
         }
       } catch (error) {
-        console.error('获取标记点信息失败:', error);
-        // 如果获取标记点失败，仍然跳转到场景
+        console.error('路线计算失败，直接跳转:', error);
         this.$refs.viewer.loadPanorama(sceneId);
-        this.$message.success(`正在导航到：${sceneName}`);
-        this.aiInputText = '';
+        this.$message.success(`正在导航到：${markerTitle}`);
       }
+    },
+
+    /**
+     * 执行路线动画（核心方法）
+     * 按顺序处理每个路点，实现真实的导航移动效果
+     * @param {Array} route - 路线点列表
+     *
+     * 路点类型处理逻辑：
+     * - navigation: 相机转向导航点 → 停顿 → 缩放 → 停顿 → 加载目标场景
+     * - scene: 加载场景 → 等待
+     * - marker: 相机转向标记点
+     */
+    async executeRoute(route) {
+      if (!route || route.length === 0) return;
+
+      this.isNavigating = true;
+      this._navigationCancelled = false;
+      this.navTotalSteps = route.length;
+      this.navCurrentStep = 0;
+
+      for (let i = 0; i < route.length; i++) {
+        if (this._navigationCancelled) break;
+
+        this.navCurrentStep = i + 1;
+        const wp = route[i];
+
+        if (wp.type === 'navigation') {
+          // 1. 相机转向导航点
+          await this.$refs.viewer.lookAt(wp.pitch, wp.yaw, 800);
+          if (this._navigationCancelled) break;
+
+          // 2. 停顿让用户看清导航点
+          await this.delay(1000);
+          if (this._navigationCancelled) break;
+
+          // 3. 缩放至导航点（模拟走近效果）
+          await this.$refs.viewer.zoomTo(30, 800);
+          if (this._navigationCancelled) break;
+
+          // 4. 停顿后准备进入下一场景
+          await this.delay(1000);
+
+        } else if (wp.type === 'scene') {
+          // 加载目标场景（等待完全加载）
+          await this.$refs.viewer.loadPanoramaAsync(wp.sceneId);
+          if (this._navigationCancelled) break;
+
+          // 等待用户感受新场景
+          await this.delay(1500);
+
+        } else if (wp.type === 'marker') {
+          // 相机转向最终标记点
+          await this.$refs.viewer.lookAt(wp.pitch, wp.yaw, 800);
+        }
+      }
+
+      this.isNavigating = false;
+      this.navCurrentStep = 0;
+      this.navTotalSteps = 0;
+    },
+
+    /**
+     * 取消当前导航
+     */
+    cancelNavigation() {
+      this._navigationCancelled = true;
+      if (this._delayTimer) {
+        clearTimeout(this._delayTimer);
+        this._delayTimer = null;
+      }
+      this.isNavigating = false;
+      this.navCurrentStep = 0;
+      this.navTotalSteps = 0;
+      this.$message.info('导航已取消');
+    },
+
+    /**
+     * Promise 延时辅助方法
+     * @param {number} ms - 延时毫秒数
+     */
+    delay(ms) {
+      return new Promise(resolve => {
+        this._delayTimer = setTimeout(resolve, ms);
+      });
     },
 
     /**
@@ -1025,6 +1174,45 @@ export default {
   background: rgba(64, 158, 255, 0.3);
 } */
 
+
+/* 导航进度条 */
+.navigation-progress {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 12px 20px;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  width: 320px;
+  max-width: calc(100% - 40px);
+}
+
+.nav-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.nav-step-text {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.nav-cancel-btn {
+  color: #f56c6c !important;
+  font-size: 13px;
+  padding: 0;
+}
+
+.nav-cancel-btn:hover {
+  color: #f78989 !important;
+}
 
 /* 当前场景信息 */
 .scene-info {

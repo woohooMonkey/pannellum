@@ -10,6 +10,9 @@ const router = express.Router();
 // POST /api/v1/ai/navigate - 处理导航请求
 router.post('/navigate', aiController.navigate);
 
+// POST /api/v1/ai/route - 获取导航路线
+router.post('/route', aiController.getRoute);
+
 // GET /api/v1/ai/scenes - 获取场景列表
 router.get('/scenes', aiController.getScenes);
 

@@ -287,8 +287,169 @@ ${markerDescriptions}
         message: '获取标记点列表失败'
       });
     }
-  }
+  },
+
+  /**
+   * 获取导航路线（支持路径动画导航）
+   * POST /api/v1/ai/route
+   */
+  getRoute
 };
+
+/**
+ * BFS 广度优先搜索查找场景间最短路径
+ * @param {Object} graph - 邻接图 { sceneId: [{ targetSceneId, ... }] }
+ * @param {number} start - 起始场景ID
+ * @param {number} end - 目标场景ID
+ * @returns {Array|null} 路径（场景ID数组），找不到返回 null
+ */
+function bfs(graph, start, end) {
+  if (parseInt(start) === parseInt(end)) return [start];
+
+  const visited = new Set([parseInt(start)]);
+  const queue = [[parseInt(start), [parseInt(start)]]];
+
+  while (queue.length > 0) {
+    const [node, path] = queue.shift();
+    const neighbors = graph[node] || [];
+
+    for (const edge of neighbors) {
+      const neighbor = parseInt(edge.targetSceneId);
+      if (!visited.has(neighbor)) {
+        const newPath = [...path, neighbor];
+        if (neighbor === parseInt(end)) return newPath;
+        visited.add(neighbor);
+        queue.push([neighbor, newPath]);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 获取导航路线（支持路径动画导航）
+ * POST /api/v1/ai/route
+ */
+async function getRoute(req, res) {
+  try {
+    const { fromSceneId, toSceneId, markerId } = req.body;
+
+    if (!fromSceneId || !toSceneId) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少起始场景或目标场景ID'
+      });
+    }
+
+    const from = parseInt(fromSceneId);
+    const to = parseInt(toSceneId);
+
+    // 起始场景就是目标场景
+    if (from === to) {
+      const route = [];
+      if (markerId) {
+        const [markers] = await db.query(
+          'SELECT id, title, pitch, yaw FROM markers WHERE id = ?',
+          [markerId]
+        );
+        if (markers.length > 0) {
+          route.push({
+            type: 'marker',
+            markerId: markers[0].id,
+            title: markers[0].title,
+            pitch: parseFloat(markers[0].pitch),
+            yaw: parseFloat(markers[0].yaw)
+          });
+        }
+      }
+      return res.json({ success: true, data: { route, sameScene: true } });
+    }
+
+    // 获取所有导航标记点，构建场景连通图
+    const [navMarkers] = await db.query(
+      `SELECT m.id, m.title, m.pitch, m.yaw, m.panorama_id, m.target_panorama_id,
+              p.name as panorama_name, tp.name as target_panorama_name
+       FROM markers m
+       LEFT JOIN panoramas p ON m.panorama_id = p.id
+       LEFT JOIN panoramas tp ON m.target_panorama_id = tp.id
+       WHERE m.type = 'navigation' AND m.target_panorama_id IS NOT NULL`
+    );
+
+    // 构建邻接图
+    const graph = {};
+    navMarkers.forEach(m => {
+      const pid = parseInt(m.panorama_id);
+      if (!graph[pid]) graph[pid] = [];
+      graph[pid].push({
+        targetSceneId: parseInt(m.target_panorama_id),
+        markerId: m.id,
+        title: m.title,
+        pitch: parseFloat(m.pitch),
+        yaw: parseFloat(m.yaw),
+        targetSceneName: m.target_panorama_name
+      });
+    });
+
+    // BFS 查找最短路径
+    const path = bfs(graph, from, to);
+
+    if (!path) {
+      return res.json({ success: true, data: { route: [], direct: true } });
+    }
+
+    // 将路径转换为路线点列表
+    const route = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      const currentSceneId = path[i];
+      const nextSceneId = path[i + 1];
+      const edges = graph[currentSceneId] || [];
+      const navMarker = edges.find(e => e.targetSceneId === nextSceneId);
+
+      if (navMarker) {
+        route.push({
+          type: 'navigation',
+          markerId: navMarker.markerId,
+          title: navMarker.title,
+          pitch: navMarker.pitch,
+          yaw: navMarker.yaw,
+          targetSceneId: navMarker.targetSceneId,
+          targetSceneName: navMarker.targetSceneName
+        });
+        route.push({
+          type: 'scene',
+          sceneId: navMarker.targetSceneId,
+          sceneName: navMarker.targetSceneName
+        });
+      }
+    }
+
+    // 如果有目标标记点，追加到路线末尾
+    if (markerId) {
+      const [markers] = await db.query(
+        'SELECT id, title, pitch, yaw FROM markers WHERE id = ?',
+        [markerId]
+      );
+      if (markers.length > 0) {
+        route.push({
+          type: 'marker',
+          markerId: markers[0].id,
+          title: markers[0].title,
+          pitch: parseFloat(markers[0].pitch),
+          yaw: parseFloat(markers[0].yaw)
+        });
+      }
+    }
+
+    res.json({ success: true, data: { route } });
+  } catch (error) {
+    console.error('路线计算失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '路线计算失败: ' + error.message
+    });
+  }
+}
 
 /**
  * 构建场景-标记点关联数据
